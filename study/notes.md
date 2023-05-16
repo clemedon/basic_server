@@ -36,8 +36,7 @@ Externam functions:
  lseek: reposition read/write file offset
  fstat: get file status
  fcntl: manip fd
- poll: wait for some event on a fd
-
+ poll: watch multiple sockets simultaneously for events
 
 ## Resources
 
@@ -45,7 +44,6 @@ Externam functions:
 - good intro https://github.com/Ccommiss/ft_irc/blob/main/README.md#t-i-introduction-t
 - technical https://www.ibm.com/docs/en/i/7.3?topic=designs-example-nonblocking-io-select
 - step by step https://www.bogotobogo.com/cplusplus/sockets_server_client.php
-
 
 /list
 /join
@@ -190,9 +188,8 @@ https://beej.us/guide/bgnet/html/#getaddrinfoprepare-to-launch
 > if i understand well, we pre-fill 'hint' and getaddrinfo() use this 'hint' to
 > full-fill 'res'?
 
-3. socket() returns a 'socket descriptor' (or -1 and set errno on error).  Filled with
-   getaddrinfo call res.
-
+3. socket() returns a 'socket descriptor' filled with getaddrinfo call res (or
+   -1 and set errno on error)
     sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 
 4. bind() associate the socket with a port on our local machine (or return -1
@@ -208,7 +205,7 @@ https://beej.us/guide/bgnet/html/#getaddrinfoprepare-to-launch
 > not useful if we only connect() in which case the kernel will choose a local
 > port for us and the site we connect to will automatically get this info.
 
-5. CLIENT CASE: connect() to a remote host (or return and set errno on error)
+5. CLIENT CASE: connect() to a remote host (or return -1 and set errno on error)
 
     connect(sockfd, res->ai_addr, res->ai_addrlen);
 
@@ -222,7 +219,7 @@ https://beej.us/guide/bgnet/html/#getaddrinfoprepare-to-launch
 > We need to call bind() before so that the server is running on a specific port
 > that we can share with the clients for them to connect()
 
-7. accept() an incoming connection (or return -1 on error)
+7. accept() an incoming connection (or return -1 and set errno on error)
 
     addr_size = sizeof their_addr;
     new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &addr_size);
@@ -237,27 +234,106 @@ https://beej.us/guide/bgnet/html/#getaddrinfoprepare-to-launch
 > listening for more new connections and the newly created one is available to
 > send()/recv() to/from the client.
 
-> If only one connection is excpected we can close() the listening sockfd.
+> If only one connection is expected we can close() the listening sockfd.
 
-8. send() and recv() to communicate over stream sockets or connected datagram
-   Return the number of bytes actually sent/received out.
+8. send() and recv() to communicate over stream sockets or* connected datagram
+   sockets*.
+
+- send() return the number of bytes actually sent out (or return -1 and set
+  errno on error)
 
     char *msg = "Beej was here!";
     len = strlen(msg);
     bytes_sent = send(sockfd, msg, len, 0);
+    if ( len == bytes_sent ) success;
 
     sockfd: the fd we want to send data to
     0: no flags
 
 > with a 0 flags argument, send() is equivalent to write()
 
+> send() *as much of the data as it can* and trust you to send the rest later if
+> part of the data does not pass.
 
-    sendto(sockfd, buf, len, flags, NULL, 0); is equivalent send()
+- recv() return the number of bytes actually read into the buffer *or 0* if the
+  remote side has closed the connection on you (or return -1 and set errno on
+  error)
+
+    int recv(int sockfd, void *buf, int len, int flags);
+
+    sockfd: the fd we want to read data from
+    buf: buffer to read info into
+    len: max length of the buffer
+
+9. sendto() and recvfrom() unconnected datagram sockets.
+
+- since datagram sockets are not connected to a remote host, we need to give
+  them a destination address, a sockaddr_in or sockaddr_in6 or a
+  sockaddr_storage that can hold both IPv6 or IPv4.
+
+> sendto(sockfd, buf, len, flags, NULL, 0); is equivalent send()
+
+10. close() and shutdown() to prevent any more read / write to the socket
+
+    close( sockfd ); // close read/write
+
+    int shutdown( int sockfd, int how );
+        0 disallow further receives
+        1 disallow further sends
+        2 disallow further sends and receives (like close())
+
+> shutdown does not actually close the fd, it just changes its usability,
+> close() must be used anyway to free a socket fd.
+
+11. getperrname() who are you?
+
+12. gethostname() who am I?
+
+###  Chapter 6 - Client-Server Background
+
+                 request
+        send() --------> recv()
+     Client     NETWORK     Server
+        recv() <-------- send()
+               response
+
+###  Chapter 7 - Slightly Advanced Techniques
+
+Blocking is a techie jargon for "sleep"
+
+Set a socket to non-blocking with fcntl()
+
+    sockfd = socket( PF_INET, SOCK_STREAM, 0 );
+    fcntl( sockfd, F_SETFL, O_NONBLOCK );
+
+Check to see if there's data waiting to be read with poll()
+
+> the system will the given socket fds and let us know when some data is ready
+> to read on which sockets. In the meantime, our process can go to sleep, saving
+> system resources.
+
+    #include <poll.h>
+    int poll( struct pollfd fds[], nfds_t nfds, int timeout );
+
+    fds: our array of info (which sockets to monitor for what)
+    nfds: count of elements in the array
+    timeout: timeout in milliseconds
+
+    return the number of elements in the array that have had an event occur
 
 
-###  Chapter 6
 
-###  Chapter 7
+    struct pollfd {
+        int fd;         // the socket descriptor
+        short events;   // bitmap of events we're interested in
+        short revents;  // when poll() returns, bitmap of events that occurred
+    };
+
+    events:
+     POLLIN     Alert me when data is ready to recv() on this socket.
+     POLLOUT    Alert me when i can send() data to this socket without blocking.
+
+
 
 ###  Chapter 8
 
