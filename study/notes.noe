@@ -1,0 +1,374 @@
+
+
+#       FT_IRC
+
+#INDEX
+------
+## Description
+## Resources
+## Beej's Guide to Network Programming"
+###  Chapter 2 - What is a socket?
+###  Chapter 3 - IP Addresses, structs, and Data Munging
+###  Chapter 4 - Jumping from IPv4 to IPv6
+###  Chapter 5 - System Calls or Bust
+###  Chapter 6 - Client-Server Background
+###  Chapter 7 - Slightly Advanced Techniques
+###  Chapter 8
+###  Chapter 9
+###  Chapter 10
+
+## Description
+
+An IRC server in C++98
+
+External functions:
+
+Used
+ socket: create an end point for communication
+ close: close fd
+ setsockopt: get / set socket options
+ getaddrinfo: converts hostnames or IP strings into a LL of addrinfo structs
+    "it used to be that you would use a function called gethostbyname() to do
+    DNS lookups. Then you’d load that information by hand into a struct
+    sockaddr_in, and use that in your calls."
+ freeaddrinfo: free one or more addrinfo structs returned by getaddrinfo
+ bind: bind a name to a socket
+ listen: listen for connections on a socket
+ accept: accept a connection on a socket
+ send: send a message on a socket
+ recv: receive a message from a socket
+ poll: watch multiple sockets simultaneously for events
+
+Unused
+ getsockname: get socket name
+ getprotobyname: get a protocol entry by name
+ gethostbyname: get IP address for a specified host name
+ connect: initiate a connection on a socket
+ *htons*: conv u_short int hostshort from host byte order to network byte order
+ htonl: conv u_int hostlong from host byte order to network byte order
+ *ntohs*: conv u_short int netshort from network byte order to host byte order
+ ntohl: conv u_int netlong from network byte order to host byte order
+ inet_addr: conv 'cp' addr from ipv4 notation to binary data in nework byte order
+    inet_pton (a new version that work with IPv6)
+    pton stands for p-resentation to n-etwork = printable to network
+ inet_ntoa: conv given addr from network byte order to ipv4 string notation
+    inet_ntop (a new version that work with IPv6)
+ signal: ANSI C signal handling
+ lseek: reposition read/write file offset
+ fstat: get file status
+ fcntl: manip fd
+
+## Resources
+
+- subject: https://cdn.intra.42.fr/pdf/pdf/81719/en.subject.pdf
+- good intro https://github.com/Ccommiss/ft_irc/blob/main/README.md#t-i-introduction-t
+- technical https://www.ibm.com/docs/en/i/7.3?topic=designs-example-nonblocking-io-select
+- step by step https://www.bogotobogo.com/cplusplus/sockets_server_client.php
+
+/list
+/join
+/msg
+/part (quitter)
+/query <username> <msg> (private msg)
+
+server test
+    telnet localhost <port_num>
+
+## Beej's Guide to Network Programming"
+
+https://beej.us/guide/bgnet/html/#getaddrinfoprepare-to-launch
+
+###  Chapter 2 - What is a socket?
+
+Sockets:
+
+- A socket is a way for programs to communicate to each other using *file
+  descriptors*.
+
+- *Internet Socket* or DARPA internet address refers to the internet protocol
+  suite which includes TCP and the IP.
+
+- There are many types of Internet Socket like the *Stream Sockets* SOCK_STREAM
+  and the *Datagram Sockets* SOCK_DGRAM.  TODO checkout Raw Sockets
+
+Stream Sockets:
+
+- a *reliable* two-way connected communication streams (socket's item will
+  arrive in the same order as they were sent. I.e. telnet, ssh, http)
+- *TCP* (Transmission Control Protocol) is used to achieve this data transmission
+  quality (in TCP/IP, the IP part deals primarily with Internet routing and is
+  not generally responsible for data integrity)
+
+Datagram Sockets:
+
+- also called *connectionless sockets*, used when it is not a big deal to lost
+  packets on the way (i.e. video games, audio, video)
+- it uses *UDP* with IP for routing = UDP/IP
+- Datagram are *unreliable* but way *faster*
+
+Data Encapsulation:
+
+    [ Ethernet [ IP [ UDP [ TFTP [ Data ] ] ] ] ]
+                                        0 1 2 3 4
+    0. The packet is born
+    1. Wrapped in a header by the first protocol,           here TFTP
+    2. Wrapped by the next protocol,                        here UDP
+    3. Wrapped by the next protocol,                        here IP
+    4. Wrapped by the final protocol on the hardware layer, here Ethernet
+
+    Once the packet is received the hardware strips the Ethernet header, the
+    kernel strips the IP and UDP headers, the TFTP program strips the TFTP
+    header and finally has the data.
+
+Layered model:
+
+    Application Layer               -> TELNET, FTP, etc.
+    Host-to-Host Transport Layer    -> TCP, UDP
+    Internet Layer                  -> IP and routing
+    Network Access Layer            -> Ethernet, Wi-Fi, or whatever
+
+###  Chapter 3 - IP Addresses, structs, and Data Munging
+
+- Think of IP address as the address of a hotel, and the port number as the room
+  number
+
+- *Host-byte ordering* refers to the byte ordering used by the processor of a
+  computer, it determines the order in which the bytes are stored in memory
+
+- When sending data into the network it is converted to *network-byte ordering
+  (Big-Endian)* to ensure that computers using different byte orderings can
+  operate correctly on *multi-byte data* such as int, float, text etc.
+
+    0xB34F on a Big-Endian machine would be stored:     B3 4F (big first)
+    0xB34F on a Little-Endian machine would be stored:  4F B3
+
+- We can convert *two types* of number: short (two bytes) and long (four bytes),
+  if our host-byte order is Little-Endian we want to convert it to network-byte
+  order so we will use: htons() *h-ost to n-etwork s-short*
+
+    htons() host to network short
+    htonl() host to network long
+    ntohs() network to host short
+    ntohl() network to host long
+
+- The struct addrinfo store the information about a socket address, which is
+  used by getaddrinfo function to convert DNS (Domain Name System) names into IP
+  addresses.
+
+    struct addrinfo {
+      int              ai_flags;     // AI_PASSIVE, AI_CANONNAME, etc.
+      int              ai_family;    // AF_INET, AF_INET6, AF_UNSPEC
+      int              ai_socktype;  // SOCK_STREAM, SOCK_DGRAM
+      int              ai_protocol;  // 0 for UDP or TCP based on ai_socktype
+      size_t           ai_addrlen;   // length of ai_addr in bytes
+      struct sockaddr *ai_addr;      // struct sockaddr_in/in6
+      char            *ai_canonname; // full canonical hostname
+      struct addrinfo *ai_next;      // network addresses linked list next node
+    };
+
+    struct sockaddr_in {
+      short int          sin_family;  // Address family, AF_INET
+      unsigned short int sin_port;    // Port number (in network-byte-order)
+      struct in_addr     sin_addr;    // IP address of the server
+      unsigned char      sin_zero[8]; // Padding to ensure struct sockaddr size
+    };
+
+> My private and public IP because of *firewall NAT*.  Firewall hides network
+> from the rest of the world, it translates "internal" IP addr into "external"
+> IP addr using a process called NAT = Network Address Translation
+
+###  Chapter 4 - Jumping from IPv4 to IPv6
+
+###  Chapter 5 - System Calls or Bust
+
+1. Set up *hints* (struct addrinfo) to specify the desired socket type, address
+   family, and other options.
+2. Use *getaddrinfo*() to obtain a list of suitable network addresses based on the
+   hints.
+3. Create a socket using *socket*() and obtain a file descriptor (sockfd) to
+   represent the socket.
+4. For server applications, *bind* the socket to a specific port using bind().
+5. For client applications, *connect* to a remote host using connect().
+6. For server applications, *listen* for incoming connections using listen() and
+   accept incoming connections with *accept*(), which provides a new socket for
+   each accepted connection.
+7. Use *send*() and *recv*() to send and receive data over the socket.
+8. Optionally, use *sendto*() and *recvfrom*() for unconnected datagram sockets.
+9. Close the socket when communication is finished using *close*() or *shutdown*().
+
+
+1. manually fill hints with hints about the type of socket we want
+
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints)); // clear up hints memory
+    hints.ai_family   = AF_UNSPEC;    // don't care AF_INET or AF_INET6
+    hints.ai_socktype = SOCK_STREAM;  // TCP stream sockets
+    hints.ai_flags    = AI_PASSIVE;   // take the local machine's IP
+
+TODO does AI_PASSIVE means use localhost IP?
+
+2. getaddrinfo() obtain a struct addrinfo list which containes all the possible
+   network addresses (IP addresses and port number) based on provided hints and
+   specified 'hostname' and 'service'.
+
+    int getaddrinfo(const char *hostname,   // e.g. "www.example.com" or IP
+                    const char *service,    // e.g. "http" or port number
+                    const struct addrinfo *hints,
+                    struct addrinfo **res);
+
+> Once you have obtained the struct addrinfo res, you can iterate over it to
+> find a suitable address for your socket.
+
+3. socket() returns a socket descriptor initialized with the given network
+   address.
+
+    sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+
+4. bind() associates the socket with a port on our local machine
+
+    bind(sockfd, res->ai_addr, res->ai_addrlen);
+
+> All ports below 1024 are RESERVED, make sure to choose one between 1024 and
+> 65535.  Unless you only connect() in which case the kernel will choose a local
+> port for you and the site you connect to will automatically get this info.
+
+5. CLIENT CASE: connect() to a remote host
+
+    connect(sockfd, res->ai_addr, res->ai_addrlen);
+
+6. listen() for connections on a socket and specify the max number of allowed
+   pending connections
+
+    listen(sockfd, BACKLOG);
+
+    BACKLOG the number of connections allowed in the incoming queue until
+    the server accept()
+
+> We need to call bind() before so that the server is running on a specific port
+> that we can share with the clients for them to connect()
+
+7. accept() an incoming connection
+
+    addr_size = sizeof(their_addr);
+    new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &addr_size);
+
+    sockfd: the listening fd
+    their_addr: store info about incoming connection (host and port)
+
+> Someone will try to connect() on a port you are listen()ing on.  Their
+> connection will be queued up until they are accept()ed.  You call accept() and
+> you tell it to get a pending connection.  It will return to you a new socket
+> fd to use for this single connection.  Now you have two socket fd, one that is
+> listening for more new connections and the newly created one is available to
+> send()/recv() to/from the client.
+
+> If only one connection is expected we can close() the listening sockfd.
+
+8. send() and recv() to communicate over stream sockets or* connected datagram
+   sockets*.
+
+- send() return the number of bytes actually sent out
+
+    char *msg = "Beej was here!";
+    len = strlen(msg);
+    bytes_sent = send(sockfd, msg, len, 0);
+    if ( len == bytes_sent ) success;
+
+    sockfd: the fd we want to send data to
+    0: no flags
+
+> send() *as much of the data as it can* and trust you to send the rest later if
+> part of the data does not pass.
+
+- recv() return the number of bytes actually read into the buffer *or 0* if the
+  remote side has closed the connection on you
+
+    int recv(int sockfd, void *buf, int len, int flags);
+
+    sockfd: the fd we want to read data from
+    buf: buffer to read info into
+    len: max length of the buffer
+
+9. sendto() and recvfrom() for unconnected datagram sockets.
+
+- since datagram sockets are not connected to a remote host, we need to pass
+  them a destination address, a sockaddr_in/in6 or a sockaddr_storage that can
+  hold both IPv6 or IPv4.
+
+10. close() and shutdown() to prevent any more read / write to the socket
+
+    close( sockfd ); // close read/write
+
+    int shutdown( int sockfd, int how );
+        0 disallow further receives
+        1 disallow further sends
+        2 disallow further sends and receives (like close())
+
+> shutdown does not actually close the fd, it just changes its usability,
+> close() must be used anyway to free a socket fd.
+
+11. getperrname() who are you?
+
+12. gethostname() who am I?
+
+###  Chapter 6 - Client-Server Background
+
+                 request
+        send() --------> recv()
+     Client     NETWORK     Server
+        recv() <-------- send()
+               response
+
+###  Chapter 7 - Slightly Advanced Techniques
+
+Blocking is a techie jargon for "sleep"
+
+> Non-blocking sockets allow a program to continue executing other tasks or
+> handle *multiple connections simultaneously* without waiting for O/I
+> operations to complete.
+
+> Non-blocking sockets ensure responsiveness in network programming by allowing
+> programs to monitor multiple sockets and perform non-blocking I/O
+> operations. This enables better resource utilization and the ability to handle
+> multiple connections simultaneously.
+
+Set a socket to non-blocking with fcntl()
+
+    sockfd = socket( PF_INET, SOCK_STREAM, 0 );
+    fcntl( sockfd, F_SETFL, O_NONBLOCK );
+
+Check to see if there's data waiting to be read with poll()
+
+> The system will the given socket fds and let us know when some data is ready
+> to read on which sockets. In the meantime, our process can go to sleep, saving
+> system resources.
+
+> By using poll() a program can efficiently handle multiple connections without
+> the need for multiple threads or processes.
+
+    #include <poll.h>
+    int poll( struct pollfd fds[], nfds_t nfds, int timeout );
+
+    fds: our array of info (which sockets to monitor for what)
+    nfds: count of elements in the array
+    timeout: timeout in milliseconds
+
+    return the number of elements in the array that have had an event occur
+
+
+
+    struct pollfd {
+        int fd;         // the socket descriptor
+        short events;   // bitmap of events we're interested in
+        short revents;  // when poll() returns, bitmap of events that occurred
+    };
+
+    events:
+     POLLIN     Alert me when data is ready to recv() on this socket.
+     POLLOUT    Alert me when i can send() data to this socket without blocking.
+
+###  Chapter 8
+
+###  Chapter 9
+
+###  Chapter 10

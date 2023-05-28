@@ -1,220 +1,271 @@
-#include <iostream>
-#include <string>
+#include <cerrno>    // errno
+#include <cstring>   // strerror
+#include <iostream>  // cerr, cout
+#include <vector>    // vector
 
-#include <arpa/inet.h>
+#include <sstream>  // stringstream
+
+#include <arpa/inet.h>  // inet_ntop, inet_ntoa
+#include <poll.h>       // pollfd, poll
+#include <stdlib.h>     // exit
+#include <unistd.h>     // close
+
+// recv, send, sockaddr, accept, addrinfo, getaddrinfo,
+// socket, setsockopt, bind, freeaddrinfo, listen
 #include <netdb.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
+/* #include <sys/socket.h> */
+/* #include <sys/types.h> */
 
-// perror -> errno ?
-// realloc -> vector ?
-// malloc -> new
-// exit ?
-// memset ?
-// gai_strerror ?
-// stderr FDSTDERR..
-// fprintf -> cout <<
+// exit() -> exceptions
 
 #define PORT "4242"  // Port we're listening on
 
-/* void* getInAddr( struct sockaddr* sa ) { */
-/*   if( sa->sa_family == AF_INET ) { */
-/*     return &( ( (struct sockaddr_in*)sa )->sin_addr ); */
-/*   } */
-/*   return &( ( (struct sockaddr_in6*)sa )->sin6_addr ); */
-/* } */
+// gai_strerror -> custom gai_strerror_lookup
+
+#include <iostream>
+#include <string>
+
+/**
+ * @brief       Forbidden gai_strerror implementation
+ */
+
+std::string gaiStrerror( int errorCode ) {
+  switch( errorCode ) {
+    case 0:
+      return "Success";
+    case EAI_AGAIN:
+      return "Temporary failure in name resolution";
+    case EAI_BADFLAGS:
+      return "Invalid value for ai_flags";
+    case EAI_FAIL:
+      return "Non-recoverable failure in name resolution";
+    case EAI_FAMILY:
+      return "ai_family not supported";
+    case EAI_MEMORY:
+      return "Out of memory";
+    case EAI_NONAME:
+      return "Name or service not known";
+    case EAI_SERVICE:
+      return "Invalid value for service";
+    case EAI_SOCKTYPE:
+      return "ai_socktype not supported";
+    case EAI_SYSTEM:
+      return strerror( errno );
+    default:
+      return "Unknown error";
+  }
+}
+
+/**
+ * @brief       Forbidden inet_ntop implementation
+ */
+
+std::string ntop( const struct sockaddr_storage& socket ) {
+  const struct sockaddr_in*  sockaddr;
+  const uint8_t*             addr;
+  const struct sockaddr_in6* sockaddr6;
+  const uint8_t*             addr6;
+  std::stringstream          ss;
+
+  if( socket.ss_family == AF_INET ) {
+    sockaddr = reinterpret_cast<const struct sockaddr_in*>( &socket );
+    addr = reinterpret_cast<const uint8_t*>( &sockaddr->sin_addr.s_addr );
+    ss << static_cast<int>( addr[0] ) << ".";
+    ss << static_cast<int>( addr[1] ) << ".";
+    ss << static_cast<int>( addr[2] ) << ".";
+    ss << static_cast<int>( addr[3] ) << ".";
+    return ss.str();
+  } else if( socket.ss_family == AF_INET6 ) {
+    sockaddr6 = reinterpret_cast<const struct sockaddr_in6*>( &socket );
+    addr6 = sockaddr6->sin6_addr.s6_addr;
+    for( int i = 0; i < 16; ++i ) {
+      if( i > 0 && i % 2 == 0 ) {
+        ss << "::";
+      }
+      ss << static_cast<int>( addr6[i] );
+    }
+    return ss.str();
+  } else {
+    return std::string( "UNKN_ADDR" );
+  }
+}
 
 class Server {
  public:
   void run();
 
  private:
-  int            listener;  // Listening socket descriptor
-  struct pollfd* pfds;      // Array of poll file descriptors
-  int            fdCount;   // Number of file descriptors in the array
-  int            fdSize;    // Size of the file descriptor array
-
-  void delFromPfds( int i );
-  void handleDataFromClient( int i );
-  void addToPfds( int newfd );
-  void handleNewConnection();
-  int  getListenerSocket();
+  void delConnection( int i );    // poll
+  void clientBroadcast( int i );  // recv, send
+  void addConnection();           // accept
+  int getListenerSocket();  // hint, getaddri., socket, bind, listen, freeaddri.
   void setup();
+
+  int                 _listenerFd;  // Listening socket descriptor
+  std::vector<pollfd> _pfds;        // List of connected clients descriptor
 };
 
-void Server::delFromPfds( int i ) {
-  // Copy the one from the end over this one
-  pfds[i] = pfds[fdCount - 1];
-  fdCount--;
+/**
+ * @brief       Delete a connection
+ *
+ * Copy one of the fd in place of the deleted one to prevent the re-indexing of
+ * our list.
+ */
+
+void Server::delConnection( int i ) {
+  close( _pfds[i].fd );
+  _pfds[i] = _pfds.back();
+  _pfds.pop_back();
 }
 
-void Server::handleDataFromClient( int i ) {
+void Server::clientBroadcast( int i ) {
   char buf[256];  // Buffer for client data
-  int  nbytes = recv( pfds[i].fd, buf, sizeof buf, 0 );
-  int  senderFd = pfds[i].fd;
+  int  nbytes = recv( _pfds[i].fd, buf, sizeof( buf ), 0 );
+  int  senderFd = _pfds[i].fd;
 
   if( nbytes <= 0 ) {
-    // Got error or connection closed by client
     if( nbytes == 0 ) {
-      // Connection closed
       std::cout << "server: socket " << senderFd << " hung up\n";
-      /* printf( "pollserver: socket %d hung up\n", senderFd ); */
     } else {
-      perror( "recv" );
+      std::cerr << "recv: " << strerror( errno ) << "\n";
     }
-
-    close( pfds[i].fd );  // Bye!
-
-    delFromPfds( i );
-
-  } else {
-    // We got some good data from a client
-
-    for( int j = 0; j < fdCount; j++ ) {
-      // Send to everyone!
-      int destFd = pfds[j].fd;
-
-      // Except the listener and ourselves
-      if( destFd != listener && destFd != senderFd ) {
-        if( send( destFd, buf, nbytes, 0 ) == -1 ) {
-          perror( "send" );
-        }
-      }
+    delConnection( i );
+    return;
+  }
+  // We got some good data from a client
+  for( size_t j = 0; j < _pfds.size(); ++j ) {
+    // Send to everyone!
+    int destFd = _pfds[j].fd;
+    // Except the _listenerFd and ourselves
+    if( destFd == _listenerFd || destFd == senderFd ) {
+      continue;
+    }
+    if( send( destFd, buf, nbytes, 0 ) == -1 ) {
+      // TODO also check that send ret value == nbytes
+      std::cerr << "send: " << strerror( errno ) << "\n";
     }
   }
 }
 
-void Server::addToPfds( int newfd ) {
-  // If we don't have room, add more space in the pfds array
-  if( fdCount == fdSize ) {
-    fdSize *= 2;  // Double it
-    pfds = (struct pollfd*)realloc( pfds, sizeof( struct pollfd ) * fdSize );
-  }
-
-  pfds[fdCount].fd = newfd;
-  pfds[fdCount].events = POLLIN;  // Check ready-to-read
-
-  fdCount++;
-}
-
-void Server::handleNewConnection() {
+void Server::addConnection() {
   int                     newfd;       // Newly accept()ed socket descriptor
-  struct sockaddr_storage remoteaddr;  // Client address
-  socklen_t               addrlen;
-  addrlen = sizeof remoteaddr;
-  newfd = accept( listener, (struct sockaddr*)&remoteaddr, &addrlen );
+  pollfd                  pfd;         // New pollfd for new connection
+  struct sockaddr_storage remoteAddr;  // Client address
+  socklen_t               remoteAddrLen;
 
+  remoteAddrLen = sizeof( remoteAddr );
+  newfd = accept( _listenerFd,
+                  reinterpret_cast<struct sockaddr*>( &remoteAddr ),
+                  &remoteAddrLen );
   if( newfd == -1 ) {
-    perror( "accept" );
-  } else {
-    addToPfds( newfd );
-
-    // TODO replace inet_ntop with inet_ntoa
-    /* char remoteIP[INET6_ADDRSTRLEN]; */
-    /* printf( "pollserver: new connection from %s on socket %d\n", */
-    /*         inet_ntop( remoteaddr.ss_family, */
-    /*                    getInAddr( (struct sockaddr*)&remoteaddr ),
-     * remoteIP, */
-    /*                    INET6_ADDRSTRLEN ), newfd ); */
+    std::cerr << "accept: " << strerror( errno ) << "\n";
+    return;
   }
-}
+  // IPv6 TEST
+  /* sockaddr->sin6_family = AF_INET6; */
+  /* sockaddr->sin6_addr.s6_addr[15] = 1; */
+  /* std::string ipAddress = ntop( socket ); */
+  /* std::cout << "IPv6 Address: " << ipAddress << std::endl; */
 
-void Server::run() {
-  setup();  // Main loop
-  while( 1 ) {
-    int poll_count = poll( pfds, fdCount, -1 );
+  pfd.fd = newfd;
+  pfd.events = POLLIN;  // Check ready-to-read
+  pfd.revents = 0;      // prevent conditional jump in run()
+  _pfds.push_back( pfd );
 
-    if( poll_count == -1 ) {
-      perror( "poll" );
-      exit( 1 );
-    }
-
-    // Run through the existing connections looking for data to read
-    for( int i = 0; i < fdCount; i++ ) {
-      // Check if someone's ready to read
-      if( pfds[i].revents & POLLIN ) {  // We got one!!
-        if( pfds[i].fd == listener ) {
-          // If listener is ready to read, handle new connection
-          handleNewConnection();
-        } else {
-          // If not the listener, we're just a regular client
-          handleDataFromClient( i );
-        }
-      }
-    }
-  }
+  std::cout << "pollserver: new connection from ";
+  std::cout << ntop( remoteAddr );
+  std::cout << " on socket " << newfd << "\n";
+  return;
 }
 
 int Server::getListenerSocket() {
-  int listener;  // Listening socket descriptor
-  int yes = 1;   // For setsockopt() SO_REUSEADDR, below
-  int rv;
-
-  struct addrinfo hints, *ai, *p;
+  int              lsock;    // Listening socket descriptor
+  int              yes = 1;  // For setsockopt() SO_REUSEADDR, below
+  int              status;
+  struct addrinfo  hints;
+  struct addrinfo* ai;
+  struct addrinfo* ptr;
 
   // Get us a socket and bind it
-  memset( &hints, 0, sizeof hints );
+  std::memset( &hints, 0, sizeof( hints ) );
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
-  if( ( rv = getaddrinfo( NULL, PORT, &hints, &ai ) ) != 0 ) {
-    std::cerr << "selectserver: " << gai_strerror( rv ) << "\n";
+
+  status = getaddrinfo( NULL, PORT, &hints, &ai );
+  if( status != 0 ) {
+    std::cerr << "selectserver: " << gaiStrerror( status ) << "\n";
     exit( 1 );
   }
-
-  for( p = ai; p != NULL; p = p->ai_next ) {
-    listener = socket( p->ai_family, p->ai_socktype, p->ai_protocol );
-    if( listener < 0 ) {
+  for( ptr = ai; ptr != NULL; ptr = ptr->ai_next ) {
+    lsock = socket( ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol );
+    if( lsock < 0 ) {
       continue;
     }
-
     // Lose the pesky "address already in use" error message
-    setsockopt( listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof( int ) );
-
-    if( bind( listener, p->ai_addr, p->ai_addrlen ) < 0 ) {
-      close( listener );
+    status = setsockopt( lsock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof( int ) );
+    if( status != 0 ) {
+      std::cerr << "setsockopt: " << strerror( errno ) << "\n";
+      exit( 1 );
+    }
+    if( bind( lsock, ptr->ai_addr, ptr->ai_addrlen ) < 0 ) {
+      close( lsock );
       continue;
     }
-
     break;
   }
-
   // If we got here, it means we didn't get bound
-  if( p == NULL ) {
+  if( ptr == NULL ) {
     return -1;
   }
-
   freeaddrinfo( ai );  // All done with this
-
   // Listen
-  if( listen( listener, 10 ) == -1 ) {
+  if( listen( lsock, 10 ) == -1 ) {
     return -1;
   }
-
-  return listener;
+  return lsock;
 }
 
 void Server::setup() {
   // Get a listening socket
-  listener = getListenerSocket();
-  if( listener == -1 ) {
-    std::cout << "error getting listening socket\n";
-    /* fprintf( stderr, "error getting listening socket\n" ); */
+  _listenerFd = getListenerSocket();
+  if( _listenerFd == -1 ) {
+    std::cerr << "error getting listening socket\n";
     exit( 1 );
   }
 
-  // Allocate initial space for file descriptors
-  fdCount = 1;  // For the listener
-  fdSize = 5;
-  pfds = (struct pollfd*)malloc( sizeof( struct pollfd ) * fdSize );
-  pfds[0].fd = listener;
-  pfds[0].events = POLLIN;  // Report ready to read on incoming connection
+  pollfd pfd;
+  pfd.fd = _listenerFd;
+  pfd.events = POLLIN;  // Report read to read on incoming connection
+
+  _pfds.push_back( pfd );
+  // connection
+}
+
+void Server::run() {
+  int poll_count;
+
+  setup();
+  // Main loop
+  while( 1 ) {
+    poll_count = poll( _pfds.data(), _pfds.size(), -1 );
+    if( poll_count == -1 ) {
+      std::cerr << "poll: " << strerror( errno ) << "\n";
+      return;
+    }
+    // Run through the existing connections looking for data to read
+    for( size_t i = 0; i < _pfds.size(); ++i ) {
+      if( _pfds[i].revents & POLLIN ) {  // We got one!!
+        if( _pfds[i].fd == _listenerFd ) {
+          // If _listenerFd (us) is ready to read, handle new connection
+          addConnection();
+        } else {
+          // If not the _listenerFd, we're just a regular client
+          clientBroadcast( i );
+        }
+      }
+    }
+  }
 }
 
 int main( void ) {
