@@ -178,6 +178,10 @@ void Server::addConnection() {
   return;
 }
 
+/**
+ * @brief       Create the listener socket
+ */
+
 int Server::getListenerSocket() {
   int              lsock;    // Listening socket descriptor
   int              yes = 1;  // For setsockopt() SO_REUSEADDR, below
