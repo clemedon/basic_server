@@ -93,11 +93,11 @@ class Server {
   void run();
 
  private:
-  void delConnection( int i );  // poll
+  void delConnection( size_t i );  // poll
   void broadcastMsg( std::string& msg, int sender );
   void parseData( const char* data, int sender );
-  void receiveData( int i );  // recv, send
-  void addConnection();       // accept
+  void receiveData( size_t i );  // recv, send
+  void addConnection();          // accept
   int getListenerSocket();  // hint, getaddri., socket, bind, listen, freeaddri.
   void setup();
 
@@ -112,7 +112,7 @@ class Server {
  * our list.
  */
 
-void Server::delConnection( int i ) {
+void Server::delConnection( size_t i ) {
   close( _pfds[i].fd );
   _pfds[i] = _pfds.back();
   _pfds.pop_back();
@@ -143,9 +143,9 @@ void Server::parseData( const char* data, int sender ) {
   }
 }
 
-void Server::receiveData( int i ) {
+void Server::receiveData( size_t i ) {
   char buf[256];  // Buffer for client data
-  int  nbytes = recv( _pfds[i].fd, buf, sizeof( buf ), 0 );
+  long nbytes = recv( _pfds[i].fd, buf, sizeof( buf ), 0 );
   int  sender = _pfds[i].fd;
 
   if( nbytes <= 0 ) {
@@ -267,7 +267,7 @@ void Server::run() {
   setup();
   // Main loop
   while( 1 ) {
-    poll_count = poll( _pfds.data(), _pfds.size(), -1 );
+    poll_count = poll( _pfds.data(), static_cast<nfds_t>( _pfds.size() ), -1 );
     if( poll_count == -1 ) {
       std::cerr << "poll: " << strerror( errno ) << "\n";
       return;
