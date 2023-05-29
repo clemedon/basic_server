@@ -1,27 +1,31 @@
+/* study/pollserver */
+/* Created: 230529 16:50:17 by clem9nt@imac */
+/* Updated: 230529 16:50:19 by clem9nt@imac */
+/* Maintainer: Clément Vidon */
+
 #include <cerrno>    // errno
 #include <cstring>   // strerror
 #include <iostream>  // cerr, cout
+#include <sstream>   // stringstream
+#include <string>    // string
 #include <vector>    // vector
 
-#include <sstream>  // stringstream
-
 #include <arpa/inet.h>  // inet_ntoa
-#include <poll.h>       // pollfd, poll
-#include <stdlib.h>     // exit
-#include <unistd.h>     // close
+#include <netdb.h>  // recv, send, sockaddr, accept, addrinfo, getaddrinfo, socket, setsockopt, bind, freeaddrinfo, listen
+#include <poll.h>   // pollfd, poll
+#include <stdlib.h>  // exit
+#include <unistd.h>  // close
 
-// recv, send, sockaddr, accept, addrinfo, getaddrinfo,
-// socket, setsockopt, bind, freeaddrinfo, listen
-#include <netdb.h>
-/* #include <sys/socket.h> */
-/* #include <sys/types.h> */
-
-// TODO exit() -> exceptions
+/**
+ * TODO
+ * - [ ] const correctness
+ * - [ ] design pattern suggestion: RAII TODO Socket class !!
+ * - [ ] add a way to quit the server
+ * - [ ] add a way to quit the client
+ * - [ ] turn exit() into exceptions
+ */
 
 #define PORT "4242"  // Port we're listening on
-
-#include <iostream>
-#include <string>
 
 /**
  * @brief       Forbidden gai_strerror implementation
@@ -59,13 +63,11 @@ std::string gaiStrerror( int errorCode ) {
  */
 
 std::string ntop( const struct sockaddr_storage& socket ) {
-  const struct sockaddr_in*  sockaddr;
-  const uint8_t*             addr;
-  const struct sockaddr_in6* sockaddr6;
-  const uint8_t*             addr6;
-  std::stringstream          ss;
+  std::stringstream ss;
 
   if( socket.ss_family == AF_INET ) {
+    const struct sockaddr_in* sockaddr;
+    const uint8_t*            addr;
     sockaddr = reinterpret_cast<const struct sockaddr_in*>( &socket );
     addr = reinterpret_cast<const uint8_t*>( &sockaddr->sin_addr.s_addr );
     ss << static_cast<int>( addr[0] ) << ".";
@@ -74,13 +76,15 @@ std::string ntop( const struct sockaddr_storage& socket ) {
     ss << static_cast<int>( addr[3] ) << ".";
     return ss.str();
   } else if( socket.ss_family == AF_INET6 ) {
-    sockaddr6 = reinterpret_cast<const struct sockaddr_in6*>( &socket );
-    addr6 = sockaddr6->sin6_addr.s6_addr;
+    const struct sockaddr_in6* sockaddr;
+    const uint8_t*             addr;
+    sockaddr = reinterpret_cast<const struct sockaddr_in6*>( &socket );
+    addr = sockaddr->sin6_addr.s6_addr;
     for( int i = 0; i < 16; ++i ) {
       if( i > 0 && i % 2 == 0 ) {
         ss << "::";
       }
-      ss << static_cast<int>( addr6[i] );
+      ss << static_cast<int>( addr[i] );
     }
     return ss.str();
   } else {
@@ -88,22 +92,58 @@ std::string ntop( const struct sockaddr_storage& socket ) {
   }
 }
 
+struct Client {
+ public:
+  Client( std::string name ) : _name( name ) {}
+
+  void         setName( std::string const& name );
+  std::string& getName( void );
+
+ private:
+  std::string _name;
+};
+
+void Client::setName( std::string const& name ) {
+  _name = name;
+}
+
+std::string& Client::getName( void ) {
+  return _name;
+}
+
 class Server {
  public:
   void run();
 
  private:
-  void delConnection( size_t i );  // poll
-  void broadcastMsg( std::string& msg, int sender );
-  void parseData( const char* data, int sender );
-  void receiveData( size_t i );  // recv, send
-  void addConnection();          // accept
+  void shutdown( void );                              // close
+  void delConnection( size_t cid );                   // close
+  void broadcastMsg( std::string& msg, size_t cid );  // send
+  void parseData( const char* data, size_t cid );
+  void receiveData( size_t cid );  // recv, senb
+  void addConnection();            // accept
   int getListenerSocket();  // hint, getaddri., socket, bind, listen, freeaddri.
   void setup();
 
+  // add a map of clients that contains their name, a struct of their socket and
+  // a struct of their status
   int                 _listener;  // Listening socket descriptor
-  std::vector<pollfd> _pfds;      // List of connected clients descriptor
+  std::vector<pollfd> _pfds;      // Pollable file descriptors
+  std::vector<Client> _clients;   // Pollable file descriptors
 };
+
+void Server::shutdown( void ) {
+  std::cout << "Server shutting down...\n";
+  for( size_t cid = 0; cid < _pfds.size(); ++cid ) {
+    if( _pfds[cid].fd != _listener ) {
+      close( _pfds[cid].fd );
+    }
+  }
+  _pfds.clear();
+  _clients.clear();
+  close( _listener );
+  exit( 0 );
+}
 
 /**
  * @brief       Delete a connection
@@ -112,53 +152,69 @@ class Server {
  * our list.
  */
 
-void Server::delConnection( size_t i ) {
-  close( _pfds[i].fd );
-  _pfds[i] = _pfds.back();
+void Server::delConnection( size_t cid ) {
+  close( _pfds[cid].fd );
+
+  _pfds[cid] = _pfds.back();
   _pfds.pop_back();
+
+  _clients[cid] = _clients.back();
+  _clients.pop_back();
+
+  std::cout << "<" << _clients[cid].getName() << " left the channel>\n";
 }
 
-void Server::broadcastMsg( std::string& msg, int sender ) {
-  for( size_t j = 0; j < _pfds.size(); ++j ) {
-    int recver = _pfds[j].fd;
-    if( recver != _listener && recver != sender ) {
-      if( send( recver, msg.c_str(), msg.length(), 0 ) == -1 ) {
-        // TODO also check that send ret value == nbytes
+/**
+ * @brief       Broadcast a message to all clients
+ */
+
+void Server::broadcastMsg( std::string& msg, size_t cid ) {
+  int dest;
+
+  msg = _clients[cid].getName() + ": " + msg + "\n";
+  for( size_t i = 0; i < _pfds.size(); ++i ) {
+    dest = _pfds[i].fd;
+    if( dest != _listener && dest != _pfds[cid].fd ) {
+      if( send( dest, msg.c_str(), msg.length(), 0 ) == -1 ) {
         std::cerr << "send: " << strerror( errno ) << "\n";
       }
     }
   }
-  std::cout << ">> socket_" << sender << " sent:\n" << msg;
+  std::cout << msg;
 }
 
-void Server::parseData( const char* data, int sender ) {
-  std::string msg;
+void Server::parseData( const char* data, size_t cid ) {
+  std::string msg( data );
 
-  msg = std::string( data );
-  // why msg == quit doesnt work ? TODO
-  if( data[0] == 'q' ) {
-    exit( 0 );
+  if( msg == "/shutdown" ) {
+    shutdown();
+  } else if( msg == "/quit" ) {
+    delConnection( cid );
+  } else if( msg.substr( 0, 6 ) == "/name " ) {
+    std::cout << "<" << _clients[cid].getName();
+    _clients[cid].setName( msg.substr( 6 ) );
+    std::cout << " became " << _clients[cid].getName() << ">\n";
   } else {
-    broadcastMsg( msg, sender );
+    broadcastMsg( msg, cid );
   }
 }
 
-void Server::receiveData( size_t i ) {
+void Server::receiveData( size_t cid ) {
   char buf[256];  // Buffer for client data
-  long nbytes = recv( _pfds[i].fd, buf, sizeof( buf ), 0 );
-  int  sender = _pfds[i].fd;
+  long nbytes = recv( _pfds[cid].fd, buf, sizeof( buf ), 0 );
 
   if( nbytes <= 0 ) {
     if( nbytes == 0 ) {
-      std::cout << "server: socket " << sender << " hung up\n";
+      std::cout << "server: socket " << _pfds[cid].fd << " hung up\n";
     } else {
       std::cerr << "recv: " << strerror( errno ) << "\n";
     }
-    delConnection( i );
+    delConnection( cid );
     return;
   }
-  buf[nbytes] = '\0';  // Null-terminate the received data
-  parseData( buf, sender );
+  // Turn "^M\n" into "\0" TODO OS compatibility
+  buf[nbytes - 2] = '\0';
+  parseData( buf, cid );
 }
 
 void Server::addConnection() {
@@ -186,9 +242,15 @@ void Server::addConnection() {
   pfd.revents = 0;      // prevent conditional jump in run()
   _pfds.push_back( pfd );
 
-  std::cout << "pollserver: new connection from ";
-  std::cout << ntop( remoteAddr );
-  std::cout << " on socket " << newfd << "\n";
+  if( _clients.size() == 0 ) {
+    _clients.push_back( Client( "NONE" ) );
+  }
+  _clients.push_back( Client( "Anon_0" + std::to_string( newfd ) ) );
+
+  std::cout << "<Anon_0" << newfd << " joined the channel>\n";
+  /* std::cout << "pollserver: new connection from "; */
+  /* std::cout << ntop( remoteAddr ); */
+  /* std::cout << " on socket " << newfd << "\n"; */
   return;
 }
 
@@ -256,7 +318,6 @@ void Server::setup() {
   pollfd pfd;
   pfd.fd = _listener;
   pfd.events = POLLIN;  // Report read to read on incoming connection
-
   _pfds.push_back( pfd );
   // connection
 }
@@ -274,14 +335,14 @@ void Server::run() {
     }
     // Run through the existing connections looking for data to read
 
-    for( size_t i = 0; i < _pfds.size(); ++i ) {
-      if( _pfds[i].revents & POLLIN ) {  // We got one!!
-        if( _pfds[i].fd == _listener ) {
+    for( size_t cid = 0; cid < _pfds.size(); ++cid ) {
+      if( _pfds[cid].revents & POLLIN ) {  // We got one!!
+        if( _pfds[cid].fd == _listener ) {
           // If _listener (us) is ready to read, handle new connection
           addConnection();
         } else {
           // If not the _listener, we're just a regular client
-          receiveData( i );
+          receiveData( cid );
         }
       }
     }
@@ -291,8 +352,6 @@ void Server::run() {
 int main( void ) {
   Server server;
   server.run();
-
-  // reun
 
   return 0;
 }
