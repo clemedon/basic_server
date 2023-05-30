@@ -92,6 +92,79 @@ std::string ntop( const struct sockaddr_storage& socket ) {
   }
 }
 
+/**
+ * @brief       Socket
+ */
+
+class Socket {
+ public:
+  Socket() : _sockfd( -1 ) {}
+  ~Socket() { closeSocket(); }
+
+  int createListeningSocket( void );
+  int getSocket( void ) { return _sockfd; }
+
+ private:
+  void closeSocket( void );  // useless?
+  /* int accept( struct sockaddr* addr, socklen_t* addrlen ); */
+  int _sockfd;
+};
+
+void Socket::closeSocket( void ) {
+  if( _sockfd != -1 ) {
+    close( _sockfd );
+    _sockfd = -1;
+  }
+}
+
+int Socket::createListeningSocket( void ) {
+  int             yes = 1;  // For setsockopt() SO_REUSEADDR, below
+  int             status;
+  struct addrinfo hints, *res, *p;
+  // Get us a socket and bind it
+
+  std::memset( &hints, 0, sizeof( hints ) );
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_PASSIVE;
+
+  status = getaddrinfo( NULL, PORT, &hints, &res );
+  if( status != 0 ) {
+    std::cerr << "selectserver: " << gaiStrerror( status ) << "\n";
+    exit( 1 );
+  }
+
+  for( p = res; p != NULL; p = p->ai_next ) {
+    _sockfd = socket( p->ai_family, p->ai_socktype, p->ai_protocol );
+    if( _sockfd < 0 ) {
+      continue;
+    };
+
+    if( setsockopt( _sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof( int ) )
+        != 0 ) {
+      std::cerr << "setsockopt: " << strerror( errno ) << "\n";
+      exit( 1 );
+    }
+    if( bind( _sockfd, p->ai_addr, p->ai_addrlen ) != 0 ) {
+      close( _sockfd );
+      continue;
+    }
+    break;
+  }
+  freeaddrinfo( res );
+  if( p == NULL ) {
+    return -1;
+  }
+  if( listen( _sockfd, 10 ) == -1 ) {
+    return -1;
+  }
+  return 0;
+}
+
+/**
+ * @brief       Client
+ */
+
 struct Client {
  public:
   Client( std::string name ) : _name( name ) {}
@@ -111,8 +184,15 @@ std::string& Client::getName( void ) {
   return _name;
 }
 
+/**
+ * @brief       Server
+ */
+
 class Server {
  public:
+  Server() { setup(); }
+  ~Server() { shutdown(); }
+
   void run();
 
  private:
@@ -122,34 +202,33 @@ class Server {
   void parseData( const char* data, size_t cid );
   void receiveData( size_t cid );  // recv, senb
   void addConnection();            // accept
-  int getListenerSocket();  // hint, getaddri., socket, bind, listen, freeaddri.
   void setup();
 
-  // add a map of clients that contains their name, a struct of their socket and
-  // a struct of their status
-  int                 _listener;  // Listening socket descriptor
+  // add a map of clients that contains their name, a struct of their
+  // socket and a struct of their status
   std::vector<pollfd> _pfds;      // Pollable file descriptors
   std::vector<Client> _clients;   // Pollable file descriptors
+  Socket              _listener;  // Use Socket for managing the listener socket
 };
 
 void Server::shutdown( void ) {
   std::cout << "Server shutting down...\n";
   for( size_t cid = 0; cid < _pfds.size(); ++cid ) {
-    if( _pfds[cid].fd != _listener ) {
+    if( _pfds[cid].fd != _listener.getSocket() ) {
       close( _pfds[cid].fd );
     }
   }
   _pfds.clear();
   _clients.clear();
-  close( _listener );
+  /* _listener.close(); */
   exit( 0 );
 }
 
 /**
  * @brief       Delete a connection
  *
- * Copy one of the fd in place of the deleted one to prevent the re-indexing of
- * our list.
+ * Copy one of the fd in place of the deleted one to prevent the
+ * re-indexing of our list.
  */
 
 void Server::delConnection( size_t cid ) {
@@ -174,7 +253,7 @@ void Server::broadcastMsg( std::string& msg, size_t cid ) {
   msg = _clients[cid].getName() + ": " + msg + "\n";
   for( size_t i = 0; i < _pfds.size(); ++i ) {
     dest = _pfds[i].fd;
-    if( dest != _listener && dest != _pfds[cid].fd ) {
+    if( dest != _listener.getSocket() && dest != _pfds[cid].fd ) {
       if( send( dest, msg.c_str(), msg.length(), 0 ) == -1 ) {
         std::cerr << "send: " << strerror( errno ) << "\n";
       }
@@ -218,15 +297,16 @@ void Server::receiveData( size_t cid ) {
 }
 
 void Server::addConnection() {
-  int                     newfd;       // Newly accept()ed socket descriptor
+  int                     newsocket;   // Newly accept()ed socket descriptor
   pollfd                  pfd;         // New pollfd for new connection
   struct sockaddr_storage remoteAddr;  // Client address
   socklen_t               remoteAddrLen;
 
   remoteAddrLen = sizeof( remoteAddr );
-  newfd = accept( _listener, reinterpret_cast<struct sockaddr*>( &remoteAddr ),
-                  &remoteAddrLen );
-  if( newfd == -1 ) {
+  newsocket = accept( _listener.getSocket(),
+                      reinterpret_cast<struct sockaddr*>( &remoteAddr ),
+                      &remoteAddrLen );
+  if( newsocket == -1 ) {
     std::cerr << "accept: " << strerror( errno ) << "\n";
     return;
   }
@@ -237,7 +317,7 @@ void Server::addConnection() {
   /* std::string ipAddress = ntop( socket ); */
   /* std::cout << "IPv6 Address: " << ipAddress << std::endl; */
 
-  pfd.fd = newfd;
+  pfd.fd = newsocket;
   pfd.events = POLLIN;  // Check ready-to-read
   pfd.revents = 0;      // prevent conditional jump in run()
   _pfds.push_back( pfd );
@@ -245,12 +325,12 @@ void Server::addConnection() {
   if( _clients.size() == 0 ) {
     _clients.push_back( Client( "NONE" ) );
   }
-  _clients.push_back( Client( "Anon_0" + std::to_string( newfd ) ) );
+  _clients.push_back( Client( "Anon_0" + std::to_string( newsocket ) ) );
 
-  std::cout << "<Anon_0" << newfd << " joined the channel>\n";
+  std::cout << "<Anon_0" << newsocket << " joined the channel>\n";
   /* std::cout << "pollserver: new connection from "; */
   /* std::cout << ntop( remoteAddr ); */
-  /* std::cout << " on socket " << newfd << "\n"; */
+  /* std::cout << " on socket " << newsocket << "\n"; */
   return;
 }
 
@@ -258,75 +338,26 @@ void Server::addConnection() {
  * @brief       Create the listener socket
  */
 
-int Server::getListenerSocket() {
-  int              listener;  // Listening socket descriptor
-  int              yes = 1;   // For setsockopt() SO_REUSEADDR, below
-  int              status;
-  struct addrinfo  hints;
-  struct addrinfo* ai;
-  struct addrinfo* ptr;
-
-  // Get us a socket and bind it
-  std::memset( &hints, 0, sizeof( hints ) );
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_PASSIVE;
-
-  status = getaddrinfo( NULL, PORT, &hints, &ai );
-  if( status != 0 ) {
-    std::cerr << "selectserver: " << gaiStrerror( status ) << "\n";
-    exit( 1 );
-  }
-  for( ptr = ai; ptr != NULL; ptr = ptr->ai_next ) {
-    listener = socket( ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol );
-    if( listener < 0 ) {
-      continue;
-    }
-    // Lose the pesky "address already in use" error message
-    status = setsockopt( listener, SOL_SOCKET, SO_REUSEADDR, &yes,
-                         sizeof( int ) );
-    if( status != 0 ) {
-      std::cerr << "setsockopt: " << strerror( errno ) << "\n";
-      exit( 1 );
-    }
-    if( bind( listener, ptr->ai_addr, ptr->ai_addrlen ) < 0 ) {
-      close( listener );
-      continue;
-    }
-    break;
-  }
-  // If we got here, it means we didn't get bound
-  if( ptr == NULL ) {
-    return -1;
-  }
-  freeaddrinfo( ai );  // All done with this
-                       // Listen
-  if( listen( listener, 10 ) == -1 ) {
-    return -1;
-  }
-  return listener;
-}
-
 void Server::setup() {
-  // Get a listening socket
-  _listener = getListenerSocket();
-  if( _listener == -1 ) {
-    std::cerr << "error getting listening socket\n";
+  pollfd pfd;
+
+  if( _listener.createListeningSocket() == -1 ) {
+    std::cerr << "error creating listening socket\n";
     exit( 1 );
   }
-
-  pollfd pfd;
-  pfd.fd = _listener;
+  pfd.fd = _listener.getSocket();
   pfd.events = POLLIN;  // Report read to read on incoming connection
   _pfds.push_back( pfd );
   // connection
 }
 
+/**
+ * @brief       Server main loop
+ */
+
 void Server::run() {
   int poll_count;
 
-  setup();
-  // Main loop
   while( 1 ) {
     poll_count = poll( _pfds.data(), static_cast<nfds_t>( _pfds.size() ), -1 );
     if( poll_count == -1 ) {
@@ -334,10 +365,9 @@ void Server::run() {
       return;
     }
     // Run through the existing connections looking for data to read
-
     for( size_t cid = 0; cid < _pfds.size(); ++cid ) {
       if( _pfds[cid].revents & POLLIN ) {  // We got one!!
-        if( _pfds[cid].fd == _listener ) {
+        if( _pfds[cid].fd == _listener.getSocket() ) {
           // If _listener (us) is ready to read, handle new connection
           addConnection();
         } else {

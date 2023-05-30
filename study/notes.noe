@@ -17,6 +17,10 @@
 ###  Chapter 9
 ###  Chapter 10
 
+## Misc
+
+rm -f a.out && c++ -Wall -Wextra -Werror -std=c++98 -Wconversion -Wsign-conversion -pedantic -fno-omit-frame-pointer -Og pollserver.cpp && leaks -q -atExit -- ./a.out
+
 ## Description
 
 An IRC server in C++98
