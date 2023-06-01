@@ -101,7 +101,7 @@ class Socket {
   Socket() : _sockfd( -1 ) {}
   ~Socket() { closeSocket(); }
 
-  int createListeningSocket( void );
+  int createListenerSocket( void );
   int getSocket( void ) { return _sockfd; }
 
  private:
@@ -117,7 +117,7 @@ void Socket::closeSocket( void ) {
   }
 }
 
-int Socket::createListeningSocket( void ) {
+int Socket::createListenerSocket( void ) {
   int             yes = 1;  // For setsockopt() SO_REUSEADDR, below
   int             status;
   struct addrinfo hints, *res, *p;
@@ -317,6 +317,8 @@ void Server::addConnection() {
   /* std::string ipAddress = ntop( socket ); */
   /* std::cout << "IPv6 Address: " << ipAddress << std::endl; */
 
+
+  // CREATE POLLFD
   pfd.fd = newsocket;
   pfd.events = POLLIN;  // Check ready-to-read
   pfd.revents = 0;      // prevent conditional jump in run()
@@ -341,7 +343,7 @@ void Server::addConnection() {
 void Server::setup() {
   pollfd pfd;
 
-  if( _listener.createListeningSocket() == -1 ) {
+  if( _listener.createListenerSocket() == -1 ) {
     std::cerr << "error creating listening socket\n";
     exit( 1 );
   }

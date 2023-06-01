@@ -118,3 +118,6 @@ int main( void ) {
   s.getSocket();
   s.getSocket();
 }
+//TODO does pfds really need RAII per socket ? cause isnt alreadi RAII to be
+//managed by the Server class, i mean pfds is an array and when program stop it
+//is cleared by Server.
