@@ -19,7 +19,11 @@
 
 ## Misc
 
-rm -f a.out && c++ -Wall -Wextra -Werror -std=c++98 -Wconversion -Wsign-conversion -pedantic -fno-omit-frame-pointer -Og pollserver.cpp && leaks -q -atExit -- ./a.out
+Macos:
+    rm -f a.out && c++ -Wall -Wextra -Werror -std=c++98 -Wconversion -Wsign-conversion -pedantic -fno-omit-frame-pointer -Og pollserver.cpp && leaks -q -atExit -- ./a.out
+
+Debian:
+    rm -f a.out && c++ -Wall -Wextra -Werror -std=c++98 pollserver.cpp && valgrind -q --leak-check=yes --show-leak-kinds=all --track-fds=yes ./a.out
 
 ## Description
 
@@ -42,6 +46,7 @@ Used
  send: send a message on a socket
  recv: receive a message from a socket
  poll: watch multiple sockets simultaneously for events
+    TODO use epoll
 
 Unused
  getsockname: get socket name
