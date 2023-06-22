@@ -381,10 +381,12 @@ void Server::run() {
       std::cerr << "poll: " << strerror( errno ) << "\n";
       return;
     }
+
     if( _pfds[0].revents & POLLIN ) {
       addConnection();
     }
-    for( size_t cid = 0; cid < _pfds.size(); ++cid ) {
+
+    for( size_t cid = 1; cid < _pfds.size(); ++cid ) {
       if( _pfds[cid].revents & POLLIN ) {
         receiveData( cid );
       }
