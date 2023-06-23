@@ -1,27 +1,28 @@
 #ifndef CLIENT_HPP_
 #define CLIENT_HPP_
 
-#include <cerrno>    // errno
-#include <cstring>   // strerror
-#include <iostream>  // cerr, cout
-#include <sstream>   // stringstream
-#include <string>    // string
-#include <vector>    // vector
+#include <iosfwd>
+#include <string>
 
-#include <arpa/inet.h>  // inet_ntoa
-#include <netdb.h>  // recv, send, sockaddr, accept, addrinfo, getaddrinfo, socket, setsockopt, bind, freeaddrinfo, listen
-#include <poll.h>   // pollfd, poll
-#include <stdlib.h>  // exit
-#include <unistd.h>  // close
+/**
+ * @brief       Client class representing a client connection.
+ */
 
 struct Client {
  public:
-  Client( std::string name );
+  explicit Client( std::string name );
+  Client( Client const& src );
+  virtual ~Client( void );
+  Client&      operator=( Client const& rhs );
+  virtual void print( std::ostream& o ) const;
+
   void         setName( std::string const& name );
   std::string& getName( void );
 
  private:
   std::string _name;
 };
+
+std::ostream& operator<<( std::ostream& o, Client const& i );
 
 #endif  // CLIENT_HPP_

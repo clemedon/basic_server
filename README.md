@@ -35,4 +35,3 @@ additional level of RAII abstraction for the client sockets.
 In summary, using RAII for `_serverSocket` ensures proper creation and
 destruction of the server socket, whereas explicit management of client sockets
 is sufficient in the given code.
-

@@ -1,83 +1,20 @@
+#include <netdb.h>   // recv, send, sockaddr, accept
+#include <stdlib.h>  // exit XXX
+#include <unistd.h>  // close
 #include <cerrno>    // errno
 #include <cstring>   // strerror
 #include <iostream>  // cerr, cout
-#include <sstream>   // stringstream
 #include <string>    // string
-#include <vector>    // vector
-
-#include <arpa/inet.h>  // inet_ntoa
-#include <netdb.h>  // recv, send, sockaddr, accept, addrinfo, getaddrinfo, socket, setsockopt, bind, freeaddrinfo, listen
-#include <poll.h>   // pollfd, poll
-#include <stdlib.h>  // exit
-#include <unistd.h>  // close
-
-#include <fcntl.h>  // fcntl
 
 #include "Client.hpp"
 #include "Server.hpp"
 #include "ServerSocket.hpp"
+#include "Utility.hpp"
 
-#define MAX_BUFFER_SIZE "1024"  // Port we're listening on
+#define MAX_BUFFER_SIZE 1024
 
-// TODO WRAP in DEV cause illegal func
-int fdIsValid( int fd ) {
-  return fcntl( fd, F_GETFD ) != -1 || errno != EBADF;
-}
-
-/**
- * @brief       String to Int
- */
-
-int stringToInt( const std::string& str ) {
-  std::istringstream iss( str );
-  int                result = 0;
-  iss >> result;
-  return result;
-}
-
-/**
- * @brief       Int to String
- */
-
-std::string intToString( int number ) {
-  std::ostringstream oss;
-  oss << number;
-  return oss.str();
-}
-
-/**
- * @brief       Forbidden inet_ntop implementation
- */
-
-std::string ntop( const struct sockaddr_storage& socket ) {
-  std::stringstream ss;
-
-  if( socket.ss_family == AF_INET ) {
-    const struct sockaddr_in* sockaddr;
-    const uint8_t*            addr;
-    sockaddr = reinterpret_cast<const struct sockaddr_in*>( &socket );
-    addr = reinterpret_cast<const uint8_t*>( &sockaddr->sin_addr.s_addr );
-    ss << static_cast<int>( addr[0] ) << ".";
-    ss << static_cast<int>( addr[1] ) << ".";
-    ss << static_cast<int>( addr[2] ) << ".";
-    ss << static_cast<int>( addr[3] ) << ".";
-    return ss.str();
-  } else if( socket.ss_family == AF_INET6 ) {
-    const struct sockaddr_in6* sockaddr;
-    const uint8_t*             addr;
-    sockaddr = reinterpret_cast<const struct sockaddr_in6*>( &socket );
-    addr = sockaddr->sin6_addr.s6_addr;
-    for( int i = 0; i < 16; ++i ) {
-      if( i > 0 && i % 2 == 0 ) {
-        ss << "::";
-      }
-      ss << static_cast<int>( addr[i] );
-    }
-    return ss.str();
-  } else {
-    return std::string( "UNKN_ADDR" );
-  }
-}
+/*  CANON
+------------------------------------------------- */
 
 Server::Server( void ) {
   pollfd serverPfd;
@@ -87,11 +24,30 @@ Server::Server( void ) {
   serverPfd.events = POLLIN;
   serverPfd.revents = 0;
   _pollfds.push_back( serverPfd );
+  return;
 }
 
 Server::~Server( void ) {
   shutdown();
 }
+
+void Server::print( std::ostream& o ) const {
+  o << _serverSocket;
+  // TODO print the list of connected clients
+  // TODO print the list of disconnected clients
+  return;
+}
+
+std::ostream& operator<<( std::ostream& o, Server const& i ) {
+  i.print( o );
+  return o;
+}
+
+/* ---------------------------------------------- */
+
+/**
+ * @brief       Runs the server.
+ */
 
 void Server::run( void ) {
   while( true ) {
@@ -109,20 +65,12 @@ void Server::run( void ) {
     }
     removeDisconnectedClients();
   }
+  return;
 }
 
-void Server::shutdown( void ) {
-  std::cout << "Server shutting down...\n";
-  for( std::size_t index = 0; index < _pollfds.size(); ++index ) {
-    if( _pollfds[index].fd != _serverSocket.get() ) {
-      close( _pollfds[index].fd );
-    }
-  }
-  _pollfds.clear();
-  _clients.clear();
-  /* _listener.close(); */
-  exit( 0 );
-}
+/**
+ * @brief       Handles new client connections.
+ */
 
 void Server::handleNewClient( void ) {
   sockaddr_storage clientAddress;
@@ -138,7 +86,7 @@ void Server::handleNewClient( void ) {
     std::cerr << "accept: " << strerror( errno ) << "\n";
     return;
   }
-  std::cout << "New connection from " << ntop( clientAddress );
+  std::cout << "New connection from " << Utility::ntop( clientAddress );
   /* std::cout << ":" << ntohs( clientAddress.sin_port ) << std::endl; */
   std::cout << std::endl;
 
@@ -153,11 +101,66 @@ void Server::handleNewClient( void ) {
   if( _clients.size() == 0 ) {
     _clients.push_back( Client( "NONE" ) );
   }
-  _clients.push_back( Client( "Anon_0" + intToString( clientSocket ) ) );
+  _clients.push_back(
+    Client( "Anon_0" + Utility::intToString( clientSocket ) ) );
 
   std::cout << "<Anon_" << clientSocket << " joined the channel>\n";
   return;
 }
+
+/**
+ * @brief       Handles communication with existing clients.
+ *
+ * @param[in]   index  The index of the client in the _pollfds vector.
+ */
+
+void Server::handleExistingClient( std::size_t index ) {
+  char buffer[MAX_BUFFER_SIZE];
+  int  clientSocket = _pollfds[index].fd;
+  std::memset( buffer, 0, sizeof( buffer ) );
+  ssize_t bytesRead = recv( clientSocket, buffer, sizeof( buffer ), 0 );
+  if( bytesRead < 0 ) {
+    std::cerr << "recv: " << strerror( errno ) << "\n";
+    exit( 1 );
+  } else if( bytesRead == 0 ) {
+    disconnectClient( index );
+    return;
+  }
+  buffer[bytesRead - 2] = '\0';
+  parseData( buffer, index );
+  return;
+}
+
+/**
+ * @brief       Parses the data received from a client.
+ *
+ * @param[in]   data   The data received from the client.
+ * @param[in]   index  The index of the client in the _pollfds vector.
+ */
+
+void Server::parseData( const char* data, std::size_t index ) {
+  std::string msg( data );
+  if( msg == "/shutdown" ) {
+    shutdown();
+  } else if( msg == "/quit" ) {
+    disconnectClient( index );
+  } else if( msg.substr( 0, 6 ) == "/name " ) {
+    std::cout << "<" << _clients[index].getName();
+    _clients[index].setName( msg.substr( 6 ) );
+    std::cout << " became " << _clients[index].getName() << ">\n";
+  } else {
+    broadcastMsg( msg, index );
+  }
+  return;
+}
+
+/**
+ * @brief       Broadcasts a message to all connected clients except the one at
+ *              the specified index.
+ *
+ * @param[in]   msg    The message to broadcast.
+ * @param[in]   index  The index of the client to exclude from broadcasting.
+ */
 
 void Server::broadcastMsg( std::string& msg, std::size_t index ) {
   int recipient;
@@ -174,48 +177,29 @@ void Server::broadcastMsg( std::string& msg, std::size_t index ) {
     }
   }
   std::cout << msg;
+  return;
 }
 
-void Server::parseData( const char* data, std::size_t index ) {
-  std::string msg( data );
-  if( msg == "/shutdown" ) {
-    shutdown();
-  } else if( msg == "/quit" ) {
-    disconnectClient( index );
-  } else if( msg.substr( 0, 6 ) == "/name " ) {
-    std::cout << "<" << _clients[index].getName();
-    _clients[index].setName( msg.substr( 6 ) );
-    std::cout << " became " << _clients[index].getName() << ">\n";
-  } else {
-    broadcastMsg( msg, index );
-  }
-}
-
-void Server::handleExistingClient( std::size_t index ) {
-  char buffer[stringToInt( MAX_BUFFER_SIZE )];
-  int  clientSocket = _pollfds[index].fd;
-  std::memset( buffer, 0, sizeof( buffer ) );
-  int bytesRead = recv( clientSocket, buffer, sizeof( buffer ), 0 );
-  if( bytesRead < 0 ) {
-    std::cerr << "recv: " << strerror( errno ) << "\n";
-    exit( 1 );
-  } else if( bytesRead == 0 ) {
-    disconnectClient( index );
-    return;
-  }
-  // Process and respond to the received data
-  buffer[bytesRead - 2] = '\0';
-  parseData( buffer, index );
-}
+/**
+ * @brief      Disconnects a client at the specified index.
+ *
+ * @param[in]  index  The index of the client to disconnect.
+ */
 
 void Server::disconnectClient( std::size_t index ) {
   std::cout << "server: socket " << _pollfds[index].fd << " hung up\n";
-  _disconnectedClients.push_back( index );
+  _disconnectedClients.push_back( static_cast<int>( index ) );
+  return;
 }
 
+/**
+ * @brief      Removes disconnected clients from the server.
+ */
+
 void Server::removeDisconnectedClients( void ) {
+  // TODO remove corresponding Client object
   for( std::size_t i = _disconnectedClients.size(); i > 0; --i ) {
-    std::size_t index = _disconnectedClients[i - 1];
+    std::size_t index = static_cast<std::size_t>( _disconnectedClients[i - 1] );
     close( _pollfds[index].fd );
     std::swap( _pollfds[index], _pollfds.back() );
     _pollfds.pop_back();
@@ -224,4 +208,22 @@ void Server::removeDisconnectedClients( void ) {
     std::cout << "Client disconnected" << std::endl;
   }
   _disconnectedClients.clear();
+  return;
+}
+
+/**
+ * @brief      Shuts down the server and closes all connections.
+ */
+
+void Server::shutdown( void ) {
+  std::cout << "Server shutting down...\n";
+  for( std::size_t index = 0; index < _pollfds.size(); ++index ) {
+    if( _pollfds[index].fd != _serverSocket.get() ) {
+      close( _pollfds[index].fd );
+    }
+  }
+  _pollfds.clear();
+  _clients.clear();
+  exit( 0 );
+  return;
 }

@@ -1,73 +1,49 @@
+#include <netdb.h>  // addrinfo, getaddrinfo, socket, setsockopt, bind, freeaddrinfo, listen
+#include <stdlib.h>  // exit XXX
+#include <unistd.h>  // close
 #include <cerrno>    // errno
 #include <cstring>   // strerror
 #include <iostream>  // cerr, cout
-#include <sstream>   // stringstream
-#include <string>    // string
-#include <vector>    // vector
-
-#include <arpa/inet.h>  // inet_ntoa
-#include <netdb.h>  // recv, send, sockaddr, accept, addrinfo, getaddrinfo, socket, setsockopt, bind, freeaddrinfo, listen
-#include <poll.h>   // pollfd, poll
-#include <stdlib.h>  // exit
-#include <unistd.h>  // close
 
 #include "ServerSocket.hpp"
+#include "Utility.hpp"
 
-#define PORT "4242"  // Port we're listening on
+#define PORT "4242"
 
-
-/**
- * @brief       Forbidden gai_strerror implementation
- */
-
-std::string gaiStrerror( int errorCode ) {
-  switch( errorCode ) {
-    case 0:
-      return "Success";
-    case EAI_AGAIN:
-      return "Temporary failure in name resolution";
-    case EAI_BADFLAGS:
-      return "Invalid value for ai_flags";
-    case EAI_FAIL:
-      return "Non-recoverable failure in name resolution";
-    case EAI_FAMILY:
-      return "ai_family not supported";
-    case EAI_MEMORY:
-      return "Out of memory";
-    case EAI_NONAME:
-      return "Name or service not known";
-    case EAI_SERVICE:
-      return "Invalid value for service";
-    case EAI_SOCKTYPE:
-      return "ai_socktype not supported";
-    case EAI_SYSTEM:
-      return strerror( errno );
-    default:
-      return "Unknown error";
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/*  CANON
+------------------------------------------------- */
 
 ServerSocket::ServerSocket( void ) : _fd( -1 ) {
+  return;
 }
 
 ServerSocket::~ServerSocket( void ) {
   close();
+  return;
 }
+
+void ServerSocket::print( std::ostream& o ) const {
+  o << _fd;
+  return;
+}
+
+std::ostream& operator<<( std::ostream& o, ServerSocket const& i ) {
+  i.print( o );
+  return o;
+}
+
+/*  GETTER SETTER
+------------------------------------------------- */
+
+int ServerSocket::get( void ) {
+  return _fd;
+}
+
+/* ---------------------------------------------- */
+
+/**
+ * @brief       Creates a listening server socket.
+ */
 
 void ServerSocket::create( void ) {
   int             opt = 1;  // For setsockopt() SO_REUSEADDR, below
@@ -80,7 +56,7 @@ void ServerSocket::create( void ) {
   hints.ai_flags = AI_PASSIVE;
   status = getaddrinfo( NULL, PORT, &hints, &res );
   if( status != 0 ) {
-    std::cerr << "selectserver: " << gaiStrerror( status ) << "\n";
+    std::cerr << "selectserver: " << Utility::gaiStrerror( status ) << "\n";
     exit( 1 );
   }
   for( p = res; p != NULL; p = p->ai_next ) {
@@ -106,15 +82,17 @@ void ServerSocket::create( void ) {
   if( listen( _fd, 10 ) == -1 ) {
     throw std::runtime_error( "Error listening on socket" );
   }
+  return;
 }
 
-int ServerSocket::get( void ) {
-  return _fd;
-}
+/**
+ * @brief       Closes the listening server socket.
+ */
 
 void ServerSocket::close( void ) {
   if( _fd != -1 ) {
     ::close( _fd );
     _fd = -1;
   }
+  return;
 }

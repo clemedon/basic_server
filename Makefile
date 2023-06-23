@@ -17,6 +17,7 @@ SRCS        := \
 	main.cpp \
 	Client.cpp \
 	ServerSocket.cpp \
+	Utility.cpp \
 
 INC_DIR     := include
 BUILD_DIR   := .build

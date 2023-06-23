@@ -1,36 +1,31 @@
 #ifndef SERVERSOCKET_HPP_
 #define SERVERSOCKET_HPP_
 
-#include <cerrno>    // errno
-#include <cstring>   // strerror
-#include <iostream>  // cerr, cout
-#include <sstream>   // stringstream
-#include <string>    // string
-#include <vector>    // vector
+#include <iosfwd>
+#include <string>
 
-#include <arpa/inet.h>  // inet_ntoa
-#include <netdb.h>  // recv, send, sockaddr, accept, addrinfo, getaddrinfo, socket, setsockopt, bind, freeaddrinfo, listen
-#include <poll.h>   // pollfd, poll
-#include <stdlib.h>  // exit
-#include <unistd.h>  // close
-
-/**
- * @brief       ServerSocket
+/** @brief      Represents a server-side listening socket and manages the
+ *              underlying socket file descriptor. It follows the RAII principle
+ *              by automatically managing the socket life cycle.
  */
 
 class ServerSocket {
- private:
-  int _fd;
-
  public:
-  ServerSocket();
-  ~ServerSocket( void );
+  ServerSocket( void );
+  /* ServerSocket( ServerSocket const& src ); */
+  virtual ~ServerSocket( void );
+  /* ServerSocket& operator=( ServerSocket const& rhs ); */
+  virtual void print( std::ostream& o ) const;
 
-  void create( void );
   int  get( void );
+  void create( void );
 
  private:
   void close( void );
+
+  int _fd;
 };
+
+std::ostream& operator<<( std::ostream& o, ServerSocket const& i );
 
 #endif  // SERVERSOCKET_HPP_
