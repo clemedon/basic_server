@@ -1,3 +1,6 @@
+#ifndef SERVERSOCKET_HPP_
+#define SERVERSOCKET_HPP_
+
 #include <cerrno>    // errno
 #include <cstring>   // strerror
 #include <iostream>  // cerr, cout
@@ -11,12 +14,23 @@
 #include <stdlib.h>  // exit
 #include <unistd.h>  // close
 
-#include "Client.hpp"
-#include "Server.hpp"
-#include "ServerSocket.hpp"
+/**
+ * @brief       ServerSocket
+ */
 
-int main() {
-  Server server;
-  server.run();
-  return 0;
-}
+class ServerSocket {
+ private:
+  int _fd;
+
+ public:
+  ServerSocket();
+  ~ServerSocket( void );
+
+  void create( void );
+  int  get( void );
+
+ private:
+  void close( void );
+};
+
+#endif  // SERVERSOCKET_HPP_

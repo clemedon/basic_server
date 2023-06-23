@@ -1,20 +1,44 @@
 #ifndef SERVER_HPP_
 #define SERVER_HPP_
 
-#include <iosfwd>
-#include <string>
+#include <cerrno>    // errno
+#include <cstring>   // strerror
+#include <iostream>  // cerr, cout
+#include <sstream>   // stringstream
+#include <string>    // string
+#include <vector>    // vector
+
+#include <arpa/inet.h>  // inet_ntoa
+#include <netdb.h>  // recv, send, sockaddr, accept, addrinfo, getaddrinfo, socket, setsockopt, bind, freeaddrinfo, listen
+#include <poll.h>   // pollfd, poll
+#include <stdlib.h>  // exit
+#include <unistd.h>  // close
+
+#include "Client.hpp"
+#include "ServerSocket.hpp"
 
 class Server {
+ private:
+  ServerSocket        _serverSocket;
+  std::vector<int>    _clientSockets;  // TODO managed by the server, no raii
+  std::vector<int>    _disconnectedClients;
+  std::vector<pollfd> _pollfds;
+  std::vector<Client> _clients;  // Pollable file descriptors
+
  public:
   Server( void );
-  Server( Server const& src );
-  virtual ~Server( void );
-  Server& operator=( Server const& rhs );
-  virtual void print( std::ostream& o ) const;
+  ~Server( void );
+
+  void run( void );
 
  private:
+  void shutdown( void );                                     // close
+  void handleNewClient( void );                              // accept
+  void broadcastMsg( std::string& msg, std::size_t index );  // send
+  void parseData( const char* data, std::size_t index );
+  void handleExistingClient( std::size_t index );  // recv, send
+  void disconnectClient( std::size_t index );      // close
+  void removeDisconnectedClients( void );          // close
 };
-
-std::ostream& operator<<( std::ostream& o, Server const& i );
 
 #endif  // SERVER_HPP_

@@ -12,11 +12,13 @@
 #include <unistd.h>  // close
 
 #include "Client.hpp"
-#include "Server.hpp"
-#include "ServerSocket.hpp"
 
-int main() {
-  Server server;
-  server.run();
-  return 0;
+Client::Client( std::string name ) : _name( name ) {
+}
+
+void Client::setName( std::string const& name ) {
+  _name = name;
+}
+std::string& Client::getName( void ) {
+  return _name;
 }

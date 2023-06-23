@@ -1,3 +1,6 @@
+#ifndef CLIENT_HPP_
+#define CLIENT_HPP_
+
 #include <cerrno>    // errno
 #include <cstring>   // strerror
 #include <iostream>  // cerr, cout
@@ -11,12 +14,14 @@
 #include <stdlib.h>  // exit
 #include <unistd.h>  // close
 
-#include "Client.hpp"
-#include "Server.hpp"
-#include "ServerSocket.hpp"
+struct Client {
+ public:
+  Client( std::string name );
+  void         setName( std::string const& name );
+  std::string& getName( void );
 
-int main() {
-  Server server;
-  server.run();
-  return 0;
-}
+ private:
+  std::string _name;
+};
+
+#endif  // CLIENT_HPP_

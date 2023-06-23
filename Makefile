@@ -13,7 +13,10 @@ LIBS_PATH   :=
 
 SRC_DIR     := src
 SRCS        := \
+	Server.cpp \
 	main.cpp \
+	Client.cpp \
+	ServerSocket.cpp \
 
 INC_DIR     := include
 BUILD_DIR   := .build
