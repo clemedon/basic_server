@@ -14,8 +14,7 @@ class Utility {
   virtual ~Utility( void );
   /* Utility& operator=( Utility const& rhs ); */
 
-  static void        closeFd( int& fd );
-  static int         fdIsValid( int fd );
+  static int fdIsValid( int fd );
   static int         stringToInt( const std::string& str );
   static std::string intToString( int number );
   static std::string ntop( const struct sockaddr_storage& socket );
@@ -24,34 +23,25 @@ class Utility {
 
 #include <fcntl.h>  // fcntl
 #include <netdb.h>
-#include <unistd.h>  // close
 #include <cerrno>
 #include <cstring>
 #include <iostream>
 #include <sstream>  // stringstream
 #include <string>
 
+
 /*  CANON
-    ------------------------------------------------- */
+------------------------------------------------- */
 
-Utility::Utility( void ) {}
+Utility::Utility( void ) {
+  return;
+}
 
-Utility::~Utility( void ) {}
+Utility::~Utility( void ) {
+  return;
+}
 
 /* ---------------------------------------------- */
-
-/**
- * @brief      Close a socket and set it to -1
- *
- * @param[in]  socket  The socket to close
- */
-
-void Utility::closeFd( int& fd ) {
-  if( fd != -1 ) {
-    ::close( fd );
-    fd = -1;
-  }
-}
 
 /**
  * @brief       Check if the file descriptor is valid.
@@ -190,14 +180,21 @@ std::ostream& operator<<( std::ostream& o, Client const& i );
 #include <iostream>
 #include <string>
 
+
 /*  CANON
-    ------------------------------------------------- */
+------------------------------------------------- */
 
-Client::Client( std::string name ) : _name( name ) { return; }
+Client::Client( std::string name ) : _name( name ) {
+  return;
+}
 
-Client::Client( Client const& src ) : _name( src._name ) { return; }
+Client::Client( Client const& src ) : _name( src._name ) {
+  return;
+}
 
-Client::~Client( void ) { return; }
+Client::~Client( void ) {
+  return;
+}
 
 Client& Client::operator=( Client const& rhs ) {
   if( this == &rhs ) {
@@ -207,7 +204,10 @@ Client& Client::operator=( Client const& rhs ) {
   return *this;
 }
 
-void Client::print( std::ostream& o ) const { o << _name; }
+void Client::print( std::ostream& o ) const {
+  o << _name;
+  return;
+}
 
 std::ostream& operator<<( std::ostream& o, Client const& i ) {
   i.print( o );
@@ -215,17 +215,147 @@ std::ostream& operator<<( std::ostream& o, Client const& i ) {
 }
 
 /*  GETTER SETTER
-    ------------------------------------------------- */
+------------------------------------------------- */
 
-void Client::setName( std::string const& name ) { _name = name; }
+void Client::setName( std::string const& name ) {
+  _name = name;
+  return;
+}
 
-std::string& Client::getName( void ) { return _name; }
+std::string& Client::getName( void ) {
+  return _name;
+}
+
+/* ---------------------------------------------- */
+#define SERVERSOCKET_HPP_
+
+#include <iosfwd>
+#include <string>
+
+/** @brief      Represents a server-side listening socket and manages the
+ *              underlying socket file descriptor. It follows the RAII principle
+ *              by automatically managing the socket life cycle.
+ */
+
+class ServerSocket {
+ public:
+  ServerSocket( void );
+  /* ServerSocket( ServerSocket const& src ); */
+  virtual ~ServerSocket( void );
+  /* ServerSocket& operator=( ServerSocket const& rhs ); */
+  virtual void print( std::ostream& o ) const;
+
+  int  get( void );
+  void create( void );
+
+ private:
+  void close( void );
+
+  int _fd;
+};
+
+std::ostream& operator<<( std::ostream& o, ServerSocket const& i );
+
+#include <netdb.h>  // addrinfo, getaddrinfo, socket, setsockopt, bind, freeaddrinfo, listen
+#include <stdlib.h>  // exit XXX
+#include <unistd.h>  // close
+#include <cerrno>    // errno
+#include <cstring>   // strerror
+#include <iostream>  // cerr, cout
+
+
+#define PORT "4242"
+
+/*  CANON
+------------------------------------------------- */
+
+ServerSocket::ServerSocket( void ) : _fd( -1 ) {
+  return;
+}
+
+ServerSocket::~ServerSocket( void ) {
+  close();
+  return;
+}
+
+void ServerSocket::print( std::ostream& o ) const {
+  o << _fd;
+  return;
+}
+
+std::ostream& operator<<( std::ostream& o, ServerSocket const& i ) {
+  i.print( o );
+  return o;
+}
+
+/*  GETTER SETTER
+------------------------------------------------- */
+
+int ServerSocket::get( void ) {
+  return _fd;
+}
 
 /* ---------------------------------------------- */
 
+/**
+ * @brief       Creates a listening server socket.
+ */
+
+void ServerSocket::create( void ) {
+  int             opt = 1;  // For setsockopt() SO_REUSEADDR, below
+  int             status;
+  struct addrinfo hints, *res, *p;
+
+  std::memset( &hints, 0, sizeof( hints ) );
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_PASSIVE;
+  status = getaddrinfo( NULL, PORT, &hints, &res );
+  if( status != 0 ) {
+    std::cerr << "selectserver: " << Utility::gaiStrerror( status ) << "\n";
+    exit( 1 );
+  }
+  for( p = res; p != NULL; p = p->ai_next ) {
+    _fd = socket( p->ai_family, p->ai_socktype, p->ai_protocol );
+    if( _fd < 0 ) {
+      continue;
+    };
+    if( setsockopt( _fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof( int ) )
+        != 0 ) {
+      std::cerr << "setsockopt: " << strerror( errno ) << "\n";
+      exit( 1 );
+    }
+    if( bind( _fd, p->ai_addr, p->ai_addrlen ) != 0 ) {
+      ::close( _fd );
+      continue;
+    }
+    break;
+  }
+  freeaddrinfo( res );
+  if( p == NULL ) {
+    throw std::runtime_error( "Error creating socket" );
+  }
+  if( listen( _fd, 10 ) == -1 ) {
+    throw std::runtime_error( "Error listening on socket" );
+  }
+  return;
+}
+
+/**
+ * @brief       Closes the listening server socket.
+ */
+
+void ServerSocket::close( void ) {
+  if( _fd != -1 ) {
+    ::close( _fd );
+    _fd = -1;
+  }
+  return;
+}
+#define SERVER_HPP_
+
 #include <poll.h>  // pollfds
 #include <iosfwd>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -245,76 +375,60 @@ class Server {
   /* Server&      operator=( Test const& rhs ); */
   virtual void print( std::ostream& o ) const;
 
-  void start( void );
+  void run( void );
 
  private:
-  void createServerSocket( void );
-  void handleNewClient( void );
-  void handleExistingClient( std::size_t index );
+  void handleNewClient( void );                              // accept
+  void handleExistingClient( std::size_t index );            // recv, send
+  void parseData( const char* data, std::size_t index );     //
+  void broadcastMsg( std::string& msg, std::size_t index );  // send
+  void disconnectClient( std::size_t index );                //
+  void removeDisconnectedClients( void );                    // close
+  void shutdown( void );                                     // close
 
-  void parseData( const char* data, std::size_t index );
-  void broadcastMsg( std::string& msg, std::size_t index );
-
-  void disconnectAClient( std::size_t index );
-  void disconnectAllClients( void );
-  void removeDisconnectedClients( void );
-  void stop( void );
-
-  int _serverSocket;
-  int _epollFd;
-
-  /* std::map<int, Client> _clients; */
-  std::vector<int> _disconnectedClients;
-
+  ServerSocket        _serverSocket;
+  std::vector<int>    _clientSockets;
+  std::vector<int>    _disconnectedClients;
   std::vector<Client> _clients;
   std::vector<pollfd> _pollfds;
-
-  // std::map<int, Client> _clients;
 };
 
 std::ostream& operator<<( std::ostream& o, Server const& i );
 
-#include <netdb.h>  // recv, send, sockaddr, accept, addrinfo, getaddrinfo, socket, setsockopt, bind, freeaddrinfo, listen
-#include <stdlib.h>     // exit XXX
-#include <sys/epoll.h>  // epoll stuff
-#include <unistd.h>     // close
-#include <cerrno>       // errno
-#include <cstring>      // strerror
-#include <iostream>     // cerr, cout
-#include <string>       // string
+#include <netdb.h>   // recv, send, sockaddr, accept
+#include <stdlib.h>  // exit XXX
+#include <unistd.h>  // close
+#include <cerrno>    // errno
+#include <cstring>   // strerror
+#include <iostream>  // cerr, cout
+#include <string>    // string
 
-#define PORT "4242"
 
 #define MAX_BUFFER_SIZE 1024
 
 /*  CANON
-    ------------------------------------------------- */
+------------------------------------------------- */
 
 Server::Server( void ) {
-  _serverSocket = -1;
-  _epollFd = -1;
-
   pollfd serverPfd;
 
-  createServerSocket();
-
-  serverPfd.fd = _serverSocket;
+  _serverSocket.create();
+  serverPfd.fd = _serverSocket.get();
   serverPfd.events = POLLIN;
   serverPfd.revents = 0;
   _pollfds.push_back( serverPfd );
-
   return;
 }
 
 Server::~Server( void ) {
-  stop();
-  std::cout << "Server shutting down...\n";
+  shutdown();
 }
 
 void Server::print( std::ostream& o ) const {
   o << _serverSocket;
   // TODO print the list of connected clients
   // TODO print the list of disconnected clients
+  return;
 }
 
 std::ostream& operator<<( std::ostream& o, Server const& i ) {
@@ -325,96 +439,25 @@ std::ostream& operator<<( std::ostream& o, Server const& i ) {
 /* ---------------------------------------------- */
 
 /**
- * @brief       Creates a listening server socket.
- */
-
-void Server::createServerSocket( void ) {
-  int             opt = 1;  // For setsockopt() SO_REUSEADDR, below
-  int             status;
-  struct addrinfo hints, *res, *p;
-
-  std::memset( &hints, 0, sizeof( hints ) );
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_PASSIVE;
-  status = getaddrinfo( NULL, PORT, &hints, &res );
-  if( status != 0 ) {
-    std::cerr << "selectserver: " << Utility::gaiStrerror( status ) << "\n";
-    exit( 1 );
-  }
-  for( p = res; p != NULL; p = p->ai_next ) {
-    _serverSocket = socket( p->ai_family, p->ai_socktype, p->ai_protocol );
-    if( _serverSocket < 0 ) {
-      continue;
-    };
-    if( setsockopt( _serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt,
-                    sizeof( int ) )
-        != 0 ) {
-      std::cerr << "setsockopt: " << strerror( errno ) << "\n";
-      exit( 1 );
-    }
-    if( bind( _serverSocket, p->ai_addr, p->ai_addrlen ) != 0 ) {
-      ::close( _serverSocket );
-      continue;
-    }
-    break;
-  }
-  freeaddrinfo( res );
-  if( p == NULL ) {
-    throw std::runtime_error( "Error creating socket" );
-  }
-  if( listen( _serverSocket, 10 ) == -1 ) {
-    throw std::runtime_error( "Error listening on socket" );
-  }
-  return;
-}
-
-/**
  * @brief       Runs the server.
  */
 
-void Server::start( void ) {
-  int evlistSize;
-  _epollFd = epoll_create( 0xCAFE );  // 1.
-  // if ( _epollFd < 0 ) report error
-
-  struct epoll_event ev; // init to null with memset
-  ev.data.fd = _serverSocket;
-  ev.events = EPOLLIN;  // TODO EPOLLIN | EPOLLONESHOT
-
-  epoll_ctl( _epollFd, EPOLL_CTL_ADD, ev.data.fd, &ev );  // 2.
-
-  struct epoll_event evlist[42];
-  while( 1 ) {
-    std::cout << "round again"  << std::endl;
-    // Fills the empty 'struct epoll evlist' with the triggered events
-    evlistSize = epoll_wait( _epollFd, evlist, 42, -1 );  // 3.
-
-    for( int i = 0; i < evlistSize; i++ ) {
-      if( evlist[i].data.fd == _serverSocket ) {
-        std::cout << "handle new client" << std::endl;
-        /* handleNewClient(); */
-      } else {
-        std::cout << "handle existing client" << std::endl;
-        /* handleExistingClient( i ); */
+void Server::run( void ) {
+  while( true ) {
+    if( poll( _pollfds.data(), _pollfds.size(), -1 ) < 0 ) {
+      std::cerr << "Error in poll" << std::endl;
+      exit( 1 );
+    }
+    if( _pollfds[0].revents & POLLIN ) {
+      handleNewClient();
+    }
+    for( std::size_t i = 1; i < _pollfds.size(); ++i ) {
+      if( _pollfds[i].revents & POLLIN ) {
+        handleExistingClient( i );
       }
     }
+    removeDisconnectedClients();
   }
-  /* while( _serverSocket != -1 ) { */
-  /*   if( poll( _pollfds.data(), _pollfds.size(), -1 ) < 0 ) { */
-  /*     std::cerr << "Error in poll" << std::endl; */
-  /*     exit( 1 ); */
-  /*   } */
-  /*   if( _pollfds[0].revents & POLLIN ) { */
-  /*     handleNewClient(); */
-  /*   } */
-  /*   for( std::size_t i = 1; i < _pollfds.size(); ++i ) { */
-  /*     if( _pollfds[i].revents & POLLIN ) { */
-  /*       handleExistingClient( i ); */
-  /*     } */
-  /*   } */
-  /*   removeDisconnectedClients(); */
-  /* } */
   return;
 }
 
@@ -429,7 +472,7 @@ void Server::handleNewClient( void ) {
   pollfd           clientPfd;
 
   clientAddressLength = sizeof( clientAddress );
-  clientSocket = accept( _serverSocket,
+  clientSocket = accept( _serverSocket.get(),
                          reinterpret_cast<struct sockaddr*>( &clientAddress ),
                          &clientAddressLength );
   if( clientSocket < 0 ) {
@@ -440,6 +483,7 @@ void Server::handleNewClient( void ) {
   /* std::cout << ":" << ntohs( clientAddress.sin_port ) << std::endl; */
   std::cout << std::endl;
 
+  _clientSockets.push_back( clientSocket );
   // Add the client socket to _pollfds
 
   clientPfd.fd = clientSocket;
@@ -454,6 +498,7 @@ void Server::handleNewClient( void ) {
     Client( "Anon_0" + Utility::intToString( clientSocket ) ) );
 
   std::cout << "<Anon_" << clientSocket << " joined the channel>\n";
+  return;
 }
 
 /**
@@ -471,11 +516,12 @@ void Server::handleExistingClient( std::size_t index ) {
     std::cerr << "recv: " << strerror( errno ) << "\n";
     exit( 1 );
   } else if( bytesRead == 0 ) {
-    disconnectAClient( index );
+    disconnectClient( index );
     return;
   }
   buffer[bytesRead - 2] = '\0';
   parseData( buffer, index );
+  return;
 }
 
 /**
@@ -487,17 +533,18 @@ void Server::handleExistingClient( std::size_t index ) {
 
 void Server::parseData( const char* data, std::size_t index ) {
   std::string msg( data );
-  if( msg == "s" ) {
-    Utility::closeFd( _serverSocket );
-  } else if( msg == "q" ) {
-    disconnectAClient( index );
-  } else if( msg.substr( 0, 6 ) == "n " ) {
+  if( msg == "/shutdown" ) {
+    shutdown();
+  } else if( msg == "/quit" ) {
+    disconnectClient( index );
+  } else if( msg.substr( 0, 6 ) == "/name " ) {
     std::cout << "<" << _clients[index].getName();
     _clients[index].setName( msg.substr( 6 ) );
     std::cout << " became " << _clients[index].getName() << ">\n";
   } else {
     broadcastMsg( msg, index );
   }
+  return;
 }
 
 /**
@@ -515,7 +562,7 @@ void Server::broadcastMsg( std::string& msg, std::size_t index ) {
   msg = _clients[index].getName() + ": " + msg + "\n";
   for( std::size_t i = 0; i < _pollfds.size(); ++i ) {
     recipient = _pollfds[i].fd;
-    if( recipient != _serverSocket && recipient != clientSocket ) {
+    if( recipient != _serverSocket.get() && recipient != clientSocket ) {
       if( send( recipient, msg.c_str(), msg.length(), 0 ) < 0 ) {
         std::cerr << "send: " << strerror( errno ) << "\n";
         exit( 1 );
@@ -523,6 +570,7 @@ void Server::broadcastMsg( std::string& msg, std::size_t index ) {
     }
   }
   std::cout << msg;
+  return;
 }
 
 /**
@@ -531,59 +579,50 @@ void Server::broadcastMsg( std::string& msg, std::size_t index ) {
  * @param[in]  index  The index of the client to disconnect.
  */
 
-void Server::disconnectAClient( std::size_t index ) {
-  std::cout << "<" << _clients[index].getName() << " disconnected>\n";
+void Server::disconnectClient( std::size_t index ) {
+  std::cout << "server: socket " << _pollfds[index].fd << " hung up\n";
   _disconnectedClients.push_back( static_cast<int>( index ) );
-}
-
-/**
- * @brief      Disconnects all the clients
- */
-
-void Server::disconnectAllClients() {
-  for( std::size_t i = 1; i < _pollfds.size(); ++i ) {
-    if( _pollfds[i].fd != -1 ) {
-      std::cout << "<" << _clients[i].getName() << " disconnected>\n";
-      _disconnectedClients.push_back( i );
-    }
-  }
+  return;
 }
 
 /**
  * @brief      Removes disconnected clients from the server.
- *
- * TODO iterate in reverse order to prevent the same element to removed twice
- * because of swap() logic
  */
 
 void Server::removeDisconnectedClients( void ) {
-  std::size_t size = _disconnectedClients.size();
-  if( size ) {
-    for( std::size_t i = size; i > 0; --i ) {
-      int index = _disconnectedClients[i - 1];
-      Utility::closeFd( _pollfds[index].fd );
-      std::swap( _pollfds[index], _pollfds.back() );
-      _pollfds.pop_back();
-      std::cout << "<" << _clients[index].getName() << " removed>\n";
-      std::swap( _clients[index], _clients.back() );
-      _clients.pop_back();
-    }
-    std::cout << "<" << size << " clients removed>\n";
-    _disconnectedClients.clear();
+  // TODO remove corresponding Client object
+  for( std::size_t i = _disconnectedClients.size(); i > 0; --i ) {
+    std::size_t index = static_cast<std::size_t>( _disconnectedClients[i - 1] );
+    close( _pollfds[index].fd );
+    std::swap( _pollfds[index], _pollfds.back() );
+    _pollfds.pop_back();
+    std::swap( _clientSockets[index - 1], _clientSockets.back() );
+    _clientSockets.pop_back();
+    std::cout << "Client disconnected" << std::endl;
   }
+  _disconnectedClients.clear();
+  return;
 }
 
-void Server::stop( void ) {
-  disconnectAllClients();
-  removeDisconnectedClients();
-  /* _clients.clear(); */
-  /* _pollfds.clear(); */
-  Utility::closeFd( _epollFd );
-  Utility::closeFd( _serverSocket );
+/**
+ * @brief      Shuts down the server and closes all connections.
+ */
+
+void Server::shutdown( void ) {
+  std::cout << "Server shutting down...\n";
+  for( std::size_t index = 0; index < _pollfds.size(); ++index ) {
+    if( _pollfds[index].fd != _serverSocket.get() ) {
+      close( _pollfds[index].fd );
+    }
+  }
+  _pollfds.clear();
+  _clients.clear();
+  exit( 0 );
+  return;
 }
 
 int main() {
   Server server;
-  server.start();
+  server.run();
   return 0;
 }

@@ -2,41 +2,37 @@
 
 #       FT_IRC
 
-## RAII
+- when a process is forked the child process inherits a duplicate set of the
+  parent process's open file descriptors.  both the parent and child process
+  will have file descriptors that refer to the same open file descriptions. any
+  operations performed on the file descriptors in either process will affect the
+  shared open file descriptions
 
-Using RAII (Resource Acquisition Is Initialization) for `_serverSocket` in the
-`Server` ensures that the server socket is properly created and closed,
-regardless of how the execution flow exits the class or function.
+- if you open a new file descriptor in the child process, referring to a file
+  that is already opened in the parent process ( after forking ), the child
+  process will have a separate file descriptor that refers to the same file but
+  has a different file description. the file descriptors will be independent,
+  and changes made to one of the file descriptor will not affect the other one.
 
-RAII is a programming technique where resources, such as file handles or network
-sockets, are tied to the lifespan of an object. The resource acquisition and
-release are managed automatically through constructors and destructors of the
-object, ensuring that the resource is always properly released when the object
-goes out of scope.
+- within the same process, it is not possible to open a new file descriptor that
+  refers to the same file ( inode ) but has a different file description. the
+  file descriptions are tied to the file descriptors at the time of opening, and
+  it is not possible to change or duplicate the file description of an existing
+  file descriptor within the same process.
 
-The `ServerSocket` class encapsulates the server socket creation, and the
-constructor initializes the socket, while the destructor closes it. By using the
-`ServerSocket` object as a member variable in the `Server` class, the server
-socket's lifecycle is automatically managed.
-
-The socket is created when the `Server` object is constructed and closed when it
-is destructed. This guarantees that the server socket is properly closed even if
-an exception is thrown during the execution.
-
-On the other hand, `_clientSockets` in the `Server` class is a vector of client
-socket file descriptors. Managing client sockets does not require RAII in the
-same way as the server socket. The reason is that closing client sockets can be
-explicitly handled when the client disconnects, which is already implemented in
-the `removeDisconnectedClients` function. Client sockets are managed by
-explicitly closing them using the `close` function. Since the vector stores the
-file descriptors and not the socket objects themselves, there is no need for an
-additional level of RAII abstraction for the client sockets.
-
-In summary, using RAII for `_serverSocket` ensures proper creation and
-destruction of the server socket, whereas explicit management of client sockets
-is sufficient in the given code.
+- there is no direct way to know if two file descriptors refer to the same file
+  description. however, you can compare file descriptors using the == operator
+  to check if they refer to the same underlying file or socket. if two file
+  descriptors compare as equal, it means they are referring to the same open
+  file description. it is not possible to control or explicitly specify which
+  file description a file descriptor should refer to. the file descriptions are
+  managed internally by the operating system and are associated with file
+  descriptors at the time of opening or duplicating them.
 
 ## SELECT / POLL / EPOLL
+
+Allows for a process to monitor multiple file descriptors and get notifications
+when I/O is possible on them.
 
     Epoll*
     1. epoll_create( int size )   creates a context in the kernel
@@ -46,9 +42,10 @@ is sufficient in the given code.
 
 
 
-        // Create epoll descriptor
+        // Create epoll descriptor that create a connection with the kernel
+        // epoll instance
 
-        int epfd = epoll_create( 0xCAFE );                                      // 1.
+        int epfd = epoll_create( 0xCAFE );                                       // 1.
         // if ( epfd < 0 ) report error
         ...
         ...
@@ -76,30 +73,30 @@ is sufficient in the given code.
             // pointers which could be called directly, saving you another
             // lookup.
 
-            ev.events = EPOLLIN; // TODO EPOLLIN | EPOLLONESHOT
+            ev.events = EPOLLIN; // TODO EPOLLET | EPOLLIN | EPOLLONESHOT
 
             // Add into the monitoring list
 
-            epoll_ctl( epfd, EPOLL_CTL_ADD, ev.data.fd, &ev );    // 2.
+            epoll_ctl( epfd, EPOLL_CTL_ADD, ev.data.fd, &ev );                  // 2.
 
             // XXX TRY epoll_ctl( epfd, EPOLL_CTL_ADD, ev.data.ptr->get(), &ev );
             // https://www.ulduzsoft.com/2014/01/select-poll-epoll-practical-difference-for-system-architects/
         }
 
-        struct epoll_event ready[5];
+        struct epoll_event evlist[5];
 
         while(1){
             puts( "round again" );
 
-            // Fills the empty 'struct epoll ready' with the triggered events
+            // Fills the empty 'struct epoll evlist' with the triggered events
 
-            nfds = epoll_wait( epfd, ready, 5, 10000 );                         // 3.
+            nfds = epoll_wait( epfd, evlist, 5, 10000 );                        // 3.
 
             // Iterate through the triggered events
 
             for( i = 0; i < nfds; i++ ) {
                     memset( buffer, 0, MAXBUF );
-                    read( ready[i].data.fd, buffer, MAXBUF );
+                    read( evlist[i].data.fd, buffer, MAXBUF );
                     puts( buffer );
             }
             // XXX TRY so i receive my event with the pointer on the
@@ -109,4 +106,5 @@ is sufficient in the given code.
         Resources:
         https://devarea.com/linux-io-multiplexing-select-vs-poll-vs-epoll/
         https://www.ulduzsoft.com/2014/01/select-poll-epoll-practical-difference-for-system-architects/
+        https://copyconstruct.medium.com/the-method-to-epolls-madness-d9d2d6378642
 
