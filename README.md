@@ -2,6 +2,16 @@
 
 #       FT_IRC
 
+
+      Process:                    Kernel:               Filesystem:
+    ( File descriptor table )=> ( Open file table )=> ( I-node table )
+
+- a fork sys call results in descriptors being shared by the parent and the
+  child with share by reference semantics.  both the parent and the child are
+  using the same descriptorshare by reference semantics.  both the parent and
+  the child are using the same descriptor and reference the same offset in the
+  file entry.  the same semantics apply to dup/dup2 sys call.
+
 - when a process is forked the child process inherits a duplicate set of the
   parent process's open file descriptors.  both the parent and child process
   will have file descriptors that refer to the same open file descriptions. any
@@ -28,6 +38,10 @@
   file description a file descriptor should refer to. the file descriptions are
   managed internally by the operating system and are associated with file
   descriptors at the time of opening or duplicating them.
+
+- a large i/o operation on a single descriptor has the potential to starve other
+  descriptors thus even with the cas of *level triggered* notifications a large
+  enough write or send call has the *potential to block*.
 
 ## SELECT / POLL / EPOLL
 
@@ -75,7 +89,7 @@ when I/O is possible on them.
 
             ev.events = EPOLLIN; // TODO EPOLLET | EPOLLIN | EPOLLONESHOT
 
-            // Add into the monitoring list
+            // Add into the epoll set / interest list
 
             epoll_ctl( epfd, EPOLL_CTL_ADD, ev.data.fd, &ev );                  // 2.
 
@@ -103,8 +117,52 @@ when I/O is possible on them.
             // corresponding client => one lookup economy
         }
 
-        Resources:
-        https://devarea.com/linux-io-multiplexing-select-vs-poll-vs-epoll/
-        https://www.ulduzsoft.com/2014/01/select-poll-epoll-practical-difference-for-system-architects/
-        https://copyconstruct.medium.com/the-method-to-epolls-madness-d9d2d6378642
+Resources:
+https://copyconstruct.medium.com/the-method-to-epolls-madness-d9d2d6378642
 
+        // Create the epoll descriptor. Only one is needed per app, and is used to monitor all sockets.
+        // The function argument is ignored (it was not before, but now it is), so put your favorite number here
+        int pollingfd = epoll_create( 0xCAFE );
+
+        if ( pollingfd < 0 )
+        // report error
+
+        // Initialize the epoll structure in case more members are added in future
+        struct epoll_event ev = { 0 };
+
+        // Associate the connection class instance with the event. You can associate anything
+        // you want, epoll does not use this information. We store a connection class pointer, pConnection1
+        ev.data.ptr = pConnection1;
+
+        // Monitor for input, and do not automatically rearm the descriptor after the event
+        ev.events = EPOLLIN | EPOLLONESHOT;
+
+        // Add the descriptor into the monitoring list. We can do it even if another thread is
+        // waiting in epoll_wait - the descriptor will be properly added
+        if ( epoll_ctl( epollfd, EPOLL_CTL_ADD, pConnection1->getSocket(), &ev ) != 0 )
+            // report error
+
+        // Wait for up to 20 events (assuming we have added maybe 200 sockets before that it may happen)
+        struct epoll_event pevents[ 20 ];
+
+        // Wait for 10 seconds
+        int ready = epoll_wait( pollingfd, pevents, 20, 10000 );
+
+        // Check if epoll actually succeed
+        if ( ret == -1 )
+            // report error and abort
+        else if ( ret == 0 )
+            // timeout; no event detected
+        else
+        {
+            // Check if any events detected
+            for ( int i = 0; i < ret; i++ )
+            {
+                if ( pevents[i].events & EPOLLIN )
+                {
+                    // Get back our connection pointer
+                    Connection * c = (Connection*) pevents[i].data.ptr;
+                    c->handleReadEvent();
+                }
+            }
+      }
