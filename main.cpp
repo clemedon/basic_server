@@ -1,6 +1,7 @@
 #define UTILITY_HPP_
 
 #include <iosfwd>
+#include <map>
 #include <string>
 
 /**
@@ -20,14 +21,19 @@ class Utility {
   static std::string intToString( int number );
   static std::string ntop( const struct sockaddr_storage& socket );
   static std::string gaiStrerror( int errorCode );
+
+  template <typename K, typename V>
+  static V* findItem( std::map<K, V>& map, K& key );
 };
 
 #include <fcntl.h>  // fcntl
 #include <netdb.h>
+#include <stdlib.h>  // exit XXX
 #include <unistd.h>  // close
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <map>
 #include <sstream>  // stringstream
 #include <string>
 
@@ -48,8 +54,14 @@ Utility::~Utility( void ) {}
 
 void Utility::closeFd( int& fd ) {
   if( fd != -1 ) {
-    ::close( fd );
-    fd = -1;
+    if( ::close( fd ) != -1 ) {
+      fd = -1;
+    } else {
+      std::cerr << "close fd" << fd << ":" << strerror( errno ) << "\n";
+      exit( 1 );
+    }
+  } else {
+    std::cout << __func__ << ": fd already close." << std::endl;
   }
 }
 
@@ -161,6 +173,16 @@ std::string Utility::gaiStrerror( int errorCode ) {
       return "Unknown error";
   }
 }
+
+template <typename K, typename V>
+V* Utility::findItem( std::map<K, V>& map, K& key ) {
+  typename std::map<K, V>::iterator it = map.find( key );
+  if( it != map.end() ) {
+    return &it->second;
+  }
+  throw std::runtime_error( "Item not found" );
+}
+
 #define CLIENT_HPP_
 
 #include <iosfwd>
@@ -172,8 +194,7 @@ std::string Utility::gaiStrerror( int errorCode ) {
 
 struct Client {
  public:
-  Client( void );
-  explicit Client( std::string name, int socket );
+  explicit Client( std::string name, int& socket );
   Client( Client const& src );
   virtual ~Client( void );
   Client&      operator=( Client const& rhs );
@@ -181,13 +202,14 @@ struct Client {
 
   void        setName( std::string const& name );
   std::string getName( void ) const;
-
-  void setSocket( int const& socket );
-  int& getSocket( void );
+  void        setSocket( int& socket );
+  int&        getSocket( void );
 
  private:
+  Client( void );
+
   std::string _name;
-  int         _socket;
+  int&        _socket;
 };
 
 std::ostream& operator<<( std::ostream& o, Client const& i );
@@ -198,25 +220,30 @@ std::ostream& operator<<( std::ostream& o, Client const& i );
 /*  CANON
     ------------------------------------------------- */
 
-Client::Client( void ) : _name( "TODO" ), _socket( -1 ){};
+/* Client::Client( void ) : _name( "TODO" ), _socket( -1 ) { return; }; */
 
-Client::Client( std::string name, int socket )
+Client::Client( std::string name, int& socket )
   : _name( name ),
-    _socket( socket ) {}
+    _socket( socket ) {
+  return;
+}
 
-Client::Client( Client const& src ) : _name( src._name ) {}
+Client::Client( Client const& src )
+  : _name( src._name ),
+    _socket( src._socket ) {}
 
-Client::~Client( void ) {}
+Client::~Client( void ) { return; }
 
 Client& Client::operator=( Client const& rhs ) {
   if( this == &rhs ) {
     return *this;
   }
   _name = rhs._name;
+  _socket = rhs._socket;
   return *this;
 }
 
-void Client::print( std::ostream& o ) const { o << _name; }
+void Client::print( std::ostream& o ) const { o << _socket << "_" << _name; }
 
 std::ostream& operator<<( std::ostream& o, Client const& i ) {
   i.print( o );
@@ -230,7 +257,7 @@ void Client::setName( std::string const& name ) { _name = name; }
 
 std::string Client::getName( void ) const { return _name; }
 
-void Client::setSocket( int const& socket ) { _socket = socket; }
+void Client::setSocket( int& socket ) { _socket = socket; }
 
 int& Client::getSocket( void ) { return _socket; }
 
@@ -279,6 +306,7 @@ class Server {
   int _epollFd;
 
   std::map<int, Client> _clients;
+  Client*               _client;
   /* int _clientSocket; // instead of int clientSocket args !!*/
   std::vector<int> _disconnectedClients;
 };
@@ -362,7 +390,7 @@ void Server::createServerSocket( void ) {
       exit( 1 );
     }
     if( bind( _serverSocket, p->ai_addr, p->ai_addrlen ) != 0 ) {
-      ::close( _serverSocket );
+      Utility::closeFd( _serverSocket );
       continue;
     }
     break;
@@ -392,7 +420,7 @@ void Server::start( void ) {
   }
   struct epoll_event event;
   memset( &event, 0, sizeof( event ) );
-  event.events = EPOLLIN;  // TODO EPOLLIN | EPOLLONESHOT
+  event.events = EPOLLIN;  // TODO | EPOLLONESHOT ?
   event.data.fd = _serverSocket;
   if( epoll_ctl( _epollFd, EPOLL_CTL_ADD, event.data.fd, &event ) < 0 ) {
     std::cerr << "epoll_ctl: " << strerror( errno ) << "\n";
@@ -413,6 +441,7 @@ void Server::start( void ) {
         }
       }
     }
+    removeDisconnectedClients();
   }
 }
 
@@ -437,9 +466,6 @@ void Server::handleNewClient( void ) {
   /* std::cout << ":" << ntohs( clientAddress.sin_port ) << std::endl; */
   std::cout << std::endl;
 
-  Client newClient( "Unknown", clientSocket );
-  _clients.insert( std::make_pair( clientSocket, newClient ) );
-
   struct epoll_event event;
   memset( &event, 0, sizeof( event ) );
   event.events = EPOLLIN;  // TODO EPOLLIN | EPOLLONESHOT
@@ -448,7 +474,12 @@ void Server::handleNewClient( void ) {
     std::cerr << "epoll_ctl: " << strerror( errno ) << "\n";
     exit( 1 );
   }
-  std::cout << _clients[clientSocket].getName() << " joined the channel>\n";
+
+  Client newClient( "Unknown", clientSocket );
+  _clients.insert( std::make_pair( clientSocket, newClient ) );
+
+  _client = Utility::findItem( _clients, clientSocket );
+  std::cout << "<" << _client->getName() << " joined the channel>\n";
 }
 
 /**
@@ -487,9 +518,10 @@ void Server::parseData( const char* data, int clientSocket ) {
   } else if( msg == "q" ) {
     disconnectAClient( clientSocket );
   } else if( msg.substr( 0, 6 ) == "n" ) {
-    std::cout << "<" << _clients[clientSocket].getName();
-    _clients[clientSocket].setName( msg.substr( 6 ) );
-    std::cout << " became " << _clients[clientSocket].getName() << ">\n";
+    _client = Utility::findItem( _clients, clientSocket );
+    std::cout << "<" << _client->getName();
+    _client->setName( msg.substr( 6 ) );
+    std::cout << " became " << _client->getName() << ">\n";
   } else {
     broadcastMsg( msg, clientSocket );
   }
@@ -506,7 +538,8 @@ void Server::broadcastMsg( std::string& msg, int clientSocket ) {
   std::map<int, Client>::const_iterator it;
   int                                   recipient;
 
-  msg = _clients[clientSocket].getName() + ": " + msg + "\n";
+  _client = Utility::findItem( _clients, clientSocket );
+  msg = _client->getName() + ": " + msg + "\n";
   for( it = _clients.begin(); it != _clients.end(); ++it ) {
     recipient = it->first;
     if( recipient != _serverSocket && recipient != clientSocket ) {
@@ -526,7 +559,8 @@ void Server::broadcastMsg( std::string& msg, int clientSocket ) {
  */
 
 void Server::disconnectAClient( int clientSocket ) {
-  std::cout << "<" << _clients[clientSocket].getName() << " disconnected>\n";
+  _client = Utility::findItem( _clients, clientSocket );
+  std::cout << "<" << _client->getName() << " disconnected>\n";
   _disconnectedClients.push_back( static_cast<int>( clientSocket ) );
 }
 
@@ -550,28 +584,25 @@ void Server::disconnectAllClients() {
  * because of swap() logic
  */
 
-// TODO TODO  conditional jump
 void Server::removeDisconnectedClients( void ) {
-  std::size_t size = _disconnectedClients.size();
-  if( size ) {
-    for( std::size_t i = 0; i < size; ++i ) {
-      Utility::closeFd( _clients[i].getSocket() );
-      _clients.erase( i );
-    }
-    _disconnectedClients.clear();
+  std::map<int, Client>::iterator it;
+  for( it = _clients.begin(); it != _clients.end(); ++it ) {
+    std::cout << "~~~~~~~~~~~( " << it->second.getSocket() << " )~~~~~~~~~~~\n";
   }
+
+  std::size_t size = _disconnectedClients.size();
+  std::cout << "disconnected clients size: " << size << std::endl;
+  // TODO find where my socket's value get fucked up
+
+  for( std::size_t i = 0; i < size; ++i ) {
+  std::cout << "disconnected clients size: " << size << std::endl;
+    _client = Utility::findItem( _clients, _disconnectedClients[i] );
+    Utility::closeFd( _client->getSocket() );
+    _clients.erase( i );
+  }
+  _disconnectedClients.clear();
   std::cout << "<" << size << " clients removed>\n";
 }
-
-/* for( std::size_t i = size; i > 0; --i ) { */
-/*   int index = _disconnectedClients[i - 1]; */
-/*   Utility::closeFd( _clients[index].fd ); */
-/*   std::swap( _clients[index], _clients.back() ); */
-/*   _clients.pop_back(); */
-/*   std::cout << "<" << _clients[index].getName() << " removed>\n"; */
-/*   std::swap( _clients[index], _clients.back() ); */
-/*   _clients.pop_back(); */
-/* } */
 
 void Server::stop( void ) {
   disconnectAllClients();
