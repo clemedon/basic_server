@@ -21,9 +21,6 @@ class Utility {
   static std::string intToString( int number );
   static std::string ntop( const struct sockaddr_storage& socket );
   static std::string gaiStrerror( int errorCode );
-
-  template <typename K, typename V>
-  static V* findItem( std::map<K, V>& map, K& key );
 };
 
 #include <fcntl.h>  // fcntl
@@ -174,15 +171,6 @@ std::string Utility::gaiStrerror( int errorCode ) {
   }
 }
 
-template <typename K, typename V>
-V* Utility::findItem( std::map<K, V>& map, K& key ) {
-  typename std::map<K, V>::iterator it = map.find( key );
-  if( it != map.end() ) {
-    return &it->second;
-  }
-  throw std::runtime_error( "Item not found" );
-}
-
 #define CLIENT_HPP_
 
 #include <iosfwd>
@@ -268,7 +256,7 @@ int& Client::getSocket( void ) { return _socket; }
 #include <string>
 #include <vector>
 
-class Client;
+/* class Client; */
 
 #define MAX_EVENTS 10
 
@@ -293,7 +281,7 @@ class Server {
   void handleNewClient( void );
   void handleExistingClient( int clientSocket );
 
-  // TODO remove second argument and use Server::_clientSocket
+  // TODO ? remove second argument and use Server::_clientSocket
   void parseData( const char* data, int clientSocket );
   void broadcastMsg( std::string& msg, int clientSocket );
 
@@ -306,7 +294,6 @@ class Server {
   int _epollFd;
 
   std::map<int, Client> _clients;
-  Client*               _client;
   /* int _clientSocket; // instead of int clientSocket args !!*/
   std::vector<int> _disconnectedClients;
 };
@@ -349,8 +336,9 @@ Server::~Server( void ) {
 
 void Server::print( std::ostream& o ) const {
   o << _serverSocket;
-  // TODO print the list of connected clients
-  // TODO print the list of disconnected clients
+  // TODO
+  // list of connected clients
+  // list of disconnected clients
 }
 
 std::ostream& operator<<( std::ostream& o, Server const& i ) {
@@ -436,6 +424,9 @@ void Server::start( void ) {
       if( events[i].events & EPOLLIN ) {
         if( events[i].data.fd == _serverSocket ) {
           handleNewClient();
+          std::cout << "111" << std::endl;
+          std::cout << ">>> " << _clients.at( 5 ) << "\n";
+          std::cout << "222" << std::endl;
         } else {
           handleExistingClient( events[i].data.fd );
         }
@@ -478,8 +469,12 @@ void Server::handleNewClient( void ) {
   Client newClient( "Unknown", clientSocket );
   _clients.insert( std::make_pair( clientSocket, newClient ) );
 
-  _client = Utility::findItem( _clients, clientSocket );
-  std::cout << "<" << _client->getName() << " joined the channel>\n";
+  std::cout << "<" << _clients.at( clientSocket ).getName();
+  std::cout << " joined the channel>\n";
+
+  std::cout << "333" << std::endl;
+  std::cout << ">>> " << _clients.at( 5 ) << "\n";
+  std::cout << "444" << std::endl;
 }
 
 /**
@@ -518,10 +513,9 @@ void Server::parseData( const char* data, int clientSocket ) {
   } else if( msg == "q" ) {
     disconnectAClient( clientSocket );
   } else if( msg.substr( 0, 6 ) == "n" ) {
-    _client = Utility::findItem( _clients, clientSocket );
-    std::cout << "<" << _client->getName();
-    _client->setName( msg.substr( 6 ) );
-    std::cout << " became " << _client->getName() << ">\n";
+    std::cout << "<" << _clients.at( clientSocket ).getName();
+    _clients.at( clientSocket ).setName( msg.substr( 6 ) );
+    std::cout << " became " << _clients.at( clientSocket ).getName() << ">\n";
   } else {
     broadcastMsg( msg, clientSocket );
   }
@@ -538,8 +532,7 @@ void Server::broadcastMsg( std::string& msg, int clientSocket ) {
   std::map<int, Client>::const_iterator it;
   int                                   recipient;
 
-  _client = Utility::findItem( _clients, clientSocket );
-  msg = _client->getName() + ": " + msg + "\n";
+  msg = _clients.at( clientSocket ).getName() + ": " + msg + "\n";
   for( it = _clients.begin(); it != _clients.end(); ++it ) {
     recipient = it->first;
     if( recipient != _serverSocket && recipient != clientSocket ) {
@@ -559,8 +552,8 @@ void Server::broadcastMsg( std::string& msg, int clientSocket ) {
  */
 
 void Server::disconnectAClient( int clientSocket ) {
-  _client = Utility::findItem( _clients, clientSocket );
-  std::cout << "<" << _client->getName() << " disconnected>\n";
+  std::cout << "<" << _clients.at( clientSocket ).getName();
+  std::cout << " disconnected>\n";
   _disconnectedClients.push_back( static_cast<int>( clientSocket ) );
 }
 
@@ -586,19 +579,29 @@ void Server::disconnectAllClients() {
 
 void Server::removeDisconnectedClients( void ) {
   std::map<int, Client>::iterator it;
-  for( it = _clients.begin(); it != _clients.end(); ++it ) {
-    std::cout << "~~~~~~~~~~~( " << it->second.getSocket() << " )~~~~~~~~~~~\n";
-  }
+
+  /* std::cout << _clients.size() << " clients: " << std::endl; */
+  /* for( it = _clients.begin(); it != _clients.end(); ++it ) { */
+  /* std::cout << "vvvvvvvvvvv" << std::endl; */
+  /* std::cout << " " << it->second << "\n"; */
+  /* std::cout << " " << it->first << "\n"; */
+  /* std::cout << "^^^^^^^^^^^" << std::endl; */
+  /* } */
 
   std::size_t size = _disconnectedClients.size();
-  std::cout << "disconnected clients size: " << size << std::endl;
-  // TODO find where my socket's value get fucked up
-
+  std::cout << _disconnectedClients.size();
+  std::cout << " _disconnectedClients: " << std::endl;
   for( std::size_t i = 0; i < size; ++i ) {
-  std::cout << "disconnected clients size: " << size << std::endl;
-    _client = Utility::findItem( _clients, _disconnectedClients[i] );
-    Utility::closeFd( _client->getSocket() );
-    _clients.erase( i );
+    std::cout << " " << _disconnectedClients[i] << "\n";
+  }
+
+  std::cout << "END" << std::endl;
+
+  // TODO find where my socket's value get fucked up
+  for( std::size_t i = 0; i < size; ++i ) {
+    // XXX remove getSocket and use the KEY
+    Utility::closeFd( _clients.at( _disconnectedClients[i] ).getSocket() );
+    _clients.erase( _disconnectedClients[i] );
   }
   _disconnectedClients.clear();
   std::cout << "<" << size << " clients removed>\n";
