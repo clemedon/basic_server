@@ -16,7 +16,7 @@ class Utility {
   /* Utility& operator=( Utility const& rhs ); */
 
   static void        closeFd( int& fd );
-  static int         fdIsValid( int fd );
+  static bool        fdIsValid( int fd );
   static int         stringToInt( const std::string& str );
   static std::string intToString( int number );
   static std::string ntop( const struct sockaddr_storage& socket );
@@ -44,9 +44,9 @@ Utility::~Utility( void ) {}
 /* ---------------------------------------------- */
 
 /**
- * @brief      Close a socket and set it to -1
+ * @brief      Close a file descriptor and set it to -1
  *
- * @param[in]  socket  The socket to close
+ * @param[in]  fd The file descriptor to close
  */
 
 void Utility::closeFd( int& fd ) {
@@ -63,13 +63,15 @@ void Utility::closeFd( int& fd ) {
 }
 
 /**
- * @brief       Check if the file descriptor is valid.
+ * @brief       Check if a file descriptor is valid.
  *
- * @param[in]   fd  The file descriptor to check.
+ * @param[in]   fd The file descriptor to check.
  * @return      Returns 1 if the file descriptor is valid, otherwise 0.
+ *
+ * TODO fcntl() is a forbidden function
  */
 
-int Utility::fdIsValid( int fd ) {
+bool Utility::fdIsValid( int fd ) {
   return fcntl( fd, F_GETFD ) != -1 || errno != EBADF;
 }
 
@@ -118,7 +120,7 @@ std::string Utility::ntop( const struct sockaddr_storage& socket ) {
     ss << static_cast<int>( addr[0] ) << ".";
     ss << static_cast<int>( addr[1] ) << ".";
     ss << static_cast<int>( addr[2] ) << ".";
-    ss << static_cast<int>( addr[3] ) << ".";
+    ss << static_cast<int>( addr[3] );
     return ss.str();
   } else if( socket.ss_family == AF_INET6 ) {
     const struct sockaddr_in6* sockaddr;
@@ -182,7 +184,7 @@ std::string Utility::gaiStrerror( int errorCode ) {
 
 struct Client {
  public:
-  explicit Client( std::string name, int& socket );
+  explicit Client( std::string name );
   Client( Client const& src );
   virtual ~Client( void );
   Client&      operator=( Client const& rhs );
@@ -190,14 +192,11 @@ struct Client {
 
   void        setName( std::string const& name );
   std::string getName( void ) const;
-  void        setSocket( int& socket );
-  int&        getSocket( void );
 
  private:
   Client( void );
 
   std::string _name;
-  int&        _socket;
 };
 
 std::ostream& operator<<( std::ostream& o, Client const& i );
@@ -208,17 +207,11 @@ std::ostream& operator<<( std::ostream& o, Client const& i );
 /*  CANON
     ------------------------------------------------- */
 
-/* Client::Client( void ) : _name( "TODO" ), _socket( -1 ) { return; }; */
+/* Client::Client( void ) : _name( "TODO" ) { return; }; */
 
-Client::Client( std::string name, int& socket )
-  : _name( name ),
-    _socket( socket ) {
-  return;
-}
+Client::Client( std::string name ) : _name( name ) { return; }
 
-Client::Client( Client const& src )
-  : _name( src._name ),
-    _socket( src._socket ) {}
+Client::Client( Client const& src ) : _name( src._name ) {}
 
 Client::~Client( void ) { return; }
 
@@ -227,11 +220,10 @@ Client& Client::operator=( Client const& rhs ) {
     return *this;
   }
   _name = rhs._name;
-  _socket = rhs._socket;
   return *this;
 }
 
-void Client::print( std::ostream& o ) const { o << _socket << "_" << _name; }
+void Client::print( std::ostream& o ) const { o << _name; }
 
 std::ostream& operator<<( std::ostream& o, Client const& i ) {
   i.print( o );
@@ -244,10 +236,6 @@ std::ostream& operator<<( std::ostream& o, Client const& i ) {
 void Client::setName( std::string const& name ) { _name = name; }
 
 std::string Client::getName( void ) const { return _name; }
-
-void Client::setSocket( int& socket ) { _socket = socket; }
-
-int& Client::getSocket( void ) { return _socket; }
 
 /* ---------------------------------------------- */
 
@@ -335,10 +323,10 @@ Server::~Server( void ) {
 }
 
 void Server::print( std::ostream& o ) const {
-  o << _serverSocket;
-  // TODO
-  // list of connected clients
-  // list of disconnected clients
+  o << "Server:";
+  o << "  Server socket:" << _serverSocket;
+  o << "  Connected Clients: " << _disconnectedClients.size() << "\n";
+  o << "  Disconnected Clients: " << _disconnectedClients.size() << "\n";
 }
 
 std::ostream& operator<<( std::ostream& o, Server const& i ) {
@@ -424,9 +412,6 @@ void Server::start( void ) {
       if( events[i].events & EPOLLIN ) {
         if( events[i].data.fd == _serverSocket ) {
           handleNewClient();
-          std::cout << "111" << std::endl;
-          std::cout << ">>> " << _clients.at( 5 ) << "\n";
-          std::cout << "222" << std::endl;
         } else {
           handleExistingClient( events[i].data.fd );
         }
@@ -466,21 +451,16 @@ void Server::handleNewClient( void ) {
     exit( 1 );
   }
 
-  Client newClient( "Unknown", clientSocket );
-  _clients.insert( std::make_pair( clientSocket, newClient ) );
+  _clients.insert( std::make_pair( clientSocket, Client( "Unknown" ) ) );
 
   std::cout << "<" << _clients.at( clientSocket ).getName();
   std::cout << " joined the channel>\n";
-
-  std::cout << "333" << std::endl;
-  std::cout << ">>> " << _clients.at( 5 ) << "\n";
-  std::cout << "444" << std::endl;
 }
 
 /**
  * @brief       Handles communication with existing clients.
  *
- * @param[in]   clientSocket  The client socket
+ * @param[in]   clientSocket The client socket
  */
 
 void Server::handleExistingClient( int clientSocket ) {
@@ -502,8 +482,8 @@ void Server::handleExistingClient( int clientSocket ) {
 /**
  * @brief       Parses the data received from a client.
  *
- * @param[in]   data   The data received from the client.
- * @param[in]   clientSocket  The client socket
+ * @param[in]   data The data received from the client.
+ * @param[in]   clientSocket The client socket
  */
 
 void Server::parseData( const char* data, int clientSocket ) {
@@ -524,8 +504,8 @@ void Server::parseData( const char* data, int clientSocket ) {
 /**
  * @brief       Broadcasts a message to all connected clients except the sender
  *
- * @param[in]   msg    The message to broadcast.
- * @param[in]   clientSocket  The client socket
+ * @param[in]   msg The message to broadcast.
+ * @param[in]   clientSocket The client socket
  */
 
 void Server::broadcastMsg( std::string& msg, int clientSocket ) {
@@ -548,7 +528,7 @@ void Server::broadcastMsg( std::string& msg, int clientSocket ) {
 /**
  * @brief      Disconnects a client at the specified index.
  *
- * @param[in]  index  The index of the client to disconnect.
+ * @param[in]  index The index of the client to disconnect.
  */
 
 void Server::disconnectAClient( int clientSocket ) {
@@ -572,39 +552,18 @@ void Server::disconnectAllClients() {
 
 /**
  * @brief      Removes disconnected clients from the server.
- *
- * TODO iterate in reverse order to prevent the same element to removed twice
- * because of swap() logic
  */
 
 void Server::removeDisconnectedClients( void ) {
-  std::map<int, Client>::iterator it;
-
-  /* std::cout << _clients.size() << " clients: " << std::endl; */
-  /* for( it = _clients.begin(); it != _clients.end(); ++it ) { */
-  /* std::cout << "vvvvvvvvvvv" << std::endl; */
-  /* std::cout << " " << it->second << "\n"; */
-  /* std::cout << " " << it->first << "\n"; */
-  /* std::cout << "^^^^^^^^^^^" << std::endl; */
-  /* } */
-
   std::size_t size = _disconnectedClients.size();
-  std::cout << _disconnectedClients.size();
-  std::cout << " _disconnectedClients: " << std::endl;
-  for( std::size_t i = 0; i < size; ++i ) {
-    std::cout << " " << _disconnectedClients[i] << "\n";
-  }
 
-  std::cout << "END" << std::endl;
-
-  // TODO find where my socket's value get fucked up
   for( std::size_t i = 0; i < size; ++i ) {
-    // XXX remove getSocket and use the KEY
-    Utility::closeFd( _clients.at( _disconnectedClients[i] ).getSocket() );
     _clients.erase( _disconnectedClients[i] );
+    Utility::closeFd( _disconnectedClients[i] );
   }
   _disconnectedClients.clear();
-  std::cout << "<" << size << " clients removed>\n";
+  std::cout << "<" << size << " _clients removed>\n";
+  std::cout << "<" << _clients.size() << " _clients remaining>\n";
 }
 
 void Server::stop( void ) {
