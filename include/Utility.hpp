@@ -2,6 +2,7 @@
 #define UTILITY_HPP_
 
 #include <iosfwd>
+#include <map>
 #include <string>
 
 /**
@@ -15,9 +16,8 @@ class Utility {
   virtual ~Utility( void );
   /* Utility& operator=( Utility const& rhs ); */
 
-#ifdef DEV
-  static int fdIsValid( int fd );
-#endif
+  static void        closeFd( int& fd );
+  static bool        fdIsValid( int fd );
   static int         stringToInt( const std::string& str );
   static std::string intToString( int number );
   static std::string ntop( const struct sockaddr_storage& socket );

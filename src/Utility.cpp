@@ -1,38 +1,56 @@
 #include <fcntl.h>  // fcntl
 #include <netdb.h>
+#include <stdlib.h>  // exit XXX
+#include <unistd.h>  // close
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <map>
 #include <sstream>  // stringstream
 #include <string>
 
 #include "Utility.hpp"
 
 /*  CANON
-------------------------------------------------- */
+    ------------------------------------------------- */
 
-Utility::Utility( void ) {
-  return;
-}
+Utility::Utility( void ) {}
 
-Utility::~Utility( void ) {
-  return;
-}
+Utility::~Utility( void ) {}
 
 /* ---------------------------------------------- */
 
 /**
- * @brief       Check if the file descriptor is valid.
+ * @brief      Close a file descriptor and set it to -1
  *
- * @param[in]   fd  The file descriptor to check.
- * @return      Returns 1 if the file descriptor is valid, otherwise 0.
+ * @param[in]  fd The file descriptor to close
  */
 
-#ifdef DEV
-int Utility::fdIsValid( int fd ) {
+void Utility::closeFd( int& fd ) {
+  if( fd != -1 ) {
+    if( ::close( fd ) != -1 ) {
+      fd = -1;
+    } else {
+      std::cerr << "close fd" << fd << ":" << strerror( errno ) << "\n";
+      exit( 1 );
+    }
+  } else {
+    std::cout << __func__ << ": fd already close." << std::endl;
+  }
+}
+
+/**
+ * @brief       Check if a file descriptor is valid.
+ *
+ * @param[in]   fd The file descriptor to check.
+ * @return      Returns 1 if the file descriptor is valid, otherwise 0.
+ *
+ * TODO fcntl() is a forbidden function
+ */
+
+bool Utility::fdIsValid( int fd ) {
   return fcntl( fd, F_GETFD ) != -1 || errno != EBADF;
 }
-#endif
 
 /**
  * @brief       Convert a string to an integer.
@@ -79,7 +97,7 @@ std::string Utility::ntop( const struct sockaddr_storage& socket ) {
     ss << static_cast<int>( addr[0] ) << ".";
     ss << static_cast<int>( addr[1] ) << ".";
     ss << static_cast<int>( addr[2] ) << ".";
-    ss << static_cast<int>( addr[3] ) << ".";
+    ss << static_cast<int>( addr[3] );
     return ss.str();
   } else if( socket.ss_family == AF_INET6 ) {
     const struct sockaddr_in6* sockaddr;

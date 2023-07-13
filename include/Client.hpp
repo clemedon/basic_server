@@ -8,7 +8,7 @@
  * @brief       Client class representing a client connection.
  */
 
-struct Client {
+class Client {
  public:
   explicit Client( std::string name );
   Client( Client const& src );
@@ -16,10 +16,12 @@ struct Client {
   Client&      operator=( Client const& rhs );
   virtual void print( std::ostream& o ) const;
 
-  void         setName( std::string const& name );
-  std::string& getName( void );
+  void        setName( std::string const& name );
+  std::string getName( void ) const;
 
  private:
+  Client( void );
+
   std::string _name;
 };
 

@@ -1,13 +1,14 @@
 #ifndef SERVER_HPP_
 #define SERVER_HPP_
 
-#include <poll.h>  // pollfds
 #include <iosfwd>
+#include <map>
 #include <string>
 #include <vector>
 
-#include "ServerSocket.hpp"
 class Client;
+
+#define MAX_EVENTS 10
 
 /**
  * @brief       Handles the communication between multiple clients, managing
@@ -23,22 +24,28 @@ class Server {
   /* Server&      operator=( Test const& rhs ); */
   virtual void print( std::ostream& o ) const;
 
-  void run( void );
+  void start( void );
 
  private:
-  void handleNewClient( void );                              // accept
-  void handleExistingClient( std::size_t index );            // recv, send
-  void parseData( const char* data, std::size_t index );     //
-  void broadcastMsg( std::string& msg, std::size_t index );  // send
-  void disconnectClient( std::size_t index );                //
-  void removeDisconnectedClients( void );                    // close
-  void shutdown( void );                                     // close
+  void createServerSocket( void );
+  void handleNewClient( void );
+  void handleExistingClient( int clientSocket );
 
-  ServerSocket        _serverSocket;
-  std::vector<int>    _clientSockets;
-  std::vector<int>    _disconnectedClients;
-  std::vector<Client> _clients;
-  std::vector<pollfd> _pollfds;
+  // TODO ? remove second argument and use Server::_clientSocket
+  void parseData( const char* data, int clientSocket );
+  void broadcastMsg( std::string& msg, int clientSocket );
+
+  void disconnectAClient( int clientSocket );
+  void disconnectAllClients( void );
+  void removeDisconnectedClients( void );
+  void stop( void );
+
+  int _serverSocket;
+  int _epollFd;
+
+  std::map<int, Client> _clients;
+  /* TODO int _clientSocket; // instead of int clientSocket args !! */
+  std::vector<int> _disconnectedClients;
 };
 
 std::ostream& operator<<( std::ostream& o, Server const& i );

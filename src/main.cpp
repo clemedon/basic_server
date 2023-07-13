@@ -2,6 +2,6 @@
 
 int main() {
   Server server;
-  server.run();
+  server.start();
   return 0;
 }
