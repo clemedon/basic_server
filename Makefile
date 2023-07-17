@@ -16,7 +16,6 @@ SRCS        := \
 	Server.cpp \
 	main.cpp \
 	Client.cpp \
-	ServerSocket.cpp \
 	Utility.cpp \
 
 INC_DIR     := include
