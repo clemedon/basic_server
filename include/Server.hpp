@@ -1,3 +1,8 @@
+/* include/Server */
+/* Created: 230725 10:06:13 by clem@spectre */
+/* Updated: 230725 10:06:13 by clem@spectre */
+/* Maintainer: Clément Vidon */
+
 #ifndef SERVER_HPP_
 #define SERVER_HPP_
 
@@ -17,35 +22,35 @@ class Client;
  */
 
 class Server {
-  public:
-    Server( void );
-    Server( Server const& src );
-    virtual ~Server( void );
-    Server&      operator=( Server const& rhs );
-    virtual void print( std::ostream& o ) const;
+ public:
+  Server( void );
+  Server( Server const& src );
+  virtual ~Server( void );
+  Server&      operator=( Server const& rhs );
+  virtual void print( std::ostream& o ) const;
 
-  private:
-    void stop( void );
+ private:
+  void stop( void );
 
-    void removeDisconnectedClients( void );
-    void disconnectAllClients( void );
-    void disconnectAClient( int clientSocket );
+  void removeDisconnectedClients( void );
+  void disconnectAllClients( void );
+  void disconnectAClient( int clientSocket );
 
-    void broadcastMsg( std::string& msg, int clientSocket );
-    void parseData( const char* data, int clientSocket );
+  void broadcastMsg( std::string& msg, int clientSocket );
+  void parseData( const char* data, int clientSocket );
 
-    void handleExistingClient( int clientSocket );
-    void handleNewClient( void );
-    void createServerSocket( void );
+  void handleExistingClient( int clientSocket );
+  void handleNewClient( void );
+  void createServerSocket( void );
 
-  public:
-    void start( void );
+ public:
+  void start( void );
 
-  private:
-    int                   _serverSocket;
-    int                   _epollFd;
-    std::map<int, Client> _clients;
-    std::vector<int> _disconnectedClients;
+ private:
+  int                   _serverSocket;
+  int                   _epollFd;
+  std::map<int, Client> _clients;
+  std::vector<int>      _disconnectedClients;
 };
 
 std::ostream& operator<<( std::ostream& o, Server const& i );

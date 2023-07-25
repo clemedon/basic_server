@@ -104,7 +104,7 @@ void Server::removeDisconnectedClients( void ) {
 }
 
 /**
- * @brief      Disconnects all the clients
+ * @brief      Disconnects all the clients.
  */
 
 void Server::disconnectAllClients() {
@@ -127,10 +127,9 @@ void Server::disconnectAClient( int clientSocket ) {
 }
 
 /**
- * @brief       Broadcasts a message to all connected clients except the sender
+ * @brief       Broadcasts a message to all connected clients except the sender.
  *
- * @param[in]   msg The message to broadcast.
- * @param[in]   clientSocket The client socket
+ * TODO check epoll even broadcast
  */
 
 void Server::broadcastMsg( std::string& msg, int clientSocket ) {
@@ -179,6 +178,7 @@ void Server::handleExistingClient( int clientSocket ) {
 
   std::memset( buffer, 0, sizeof( buffer ) );
   bytesRead = recv( clientSocket, buffer, sizeof( buffer ), 0 );
+
   if( bytesRead < 0 ) {
     std::string message = "recv: " + std::string( strerror( errno ) );
     throw std::runtime_error( message );
@@ -186,6 +186,7 @@ void Server::handleExistingClient( int clientSocket ) {
     disconnectAClient( clientSocket );
     return;
   }
+
   buffer[bytesRead - 2] = '\0';
   parseData( buffer, clientSocket );
 }
@@ -209,7 +210,6 @@ void Server::handleNewClient( void ) {
   }
   std::cout << "New connection from " << Utility::ntop( clientAddress ) << "\n";
   /* std::cout << ":" << ntohs( clientAddress.sin_port ) << std::endl; */
-
   struct epoll_event event;
   memset( &event, 0, sizeof( event ) );
   event.events = EPOLLIN;  // TODO EPOLLIN | EPOLLONESHOT
@@ -218,9 +218,7 @@ void Server::handleNewClient( void ) {
     std::string message = "epoll_ctl: " + std::string( strerror( errno ) );
     throw std::runtime_error( message );
   }
-
   _clients.insert( std::make_pair( clientSocket, Client( "Unknown" ) ) );
-
   std::cout << "<" << _clients.at( clientSocket ).getName()
             << " joined the channel>\n";
 }
@@ -230,7 +228,7 @@ void Server::handleNewClient( void ) {
  */
 
 void Server::createServerSocket( void ) {
-  int             opt = 1;  // For setsockopt() SO_REUSEADDR, below
+  int             opt = 1;
   int             status;
   struct addrinfo hints, *res, *p;
 
@@ -293,7 +291,7 @@ void Server::start( void ) {
   }
   std::cout << "Ready for incoming connection PORT " << PORT << " :)\n";
   while( _serverSocket != -1 ) {
-    eventsSize = epoll_wait( _epollFd, events, MAX_EVENTS, -1 );  // 3.
+    eventsSize = epoll_wait( _epollFd, events, MAX_EVENTS, -1 );
     if( eventsSize == -1 ) {
       std::string message = "epoll_wait: " + std::string( strerror( errno ) );
       throw std::runtime_error( message );
