@@ -1,28 +1,38 @@
-#include <fcntl.h>  // fcntl
+/* src/Utility */
+/* Created: 230725 08:27:19 by clem@spectre */
+/* Updated: 230725 08:27:19 by clem@spectre */
+/* Maintainer: Clément Vidon */
+
+#include <fcntl.h>
 #include <netdb.h>
-#include <unistd.h>  // close
+#include <unistd.h>
 #include <cerrno>
 #include <cstring>
 #include <iostream>
-#include <map>
-#include <sstream>  // stringstream
+#include <sstream>
 #include <string>
 
 #include "Utility.hpp"
 
-/*  CANON
-    ------------------------------------------------- */
+/*  CANON --------------------------------------- */
 
 Utility::Utility( void ) {}
 
+Utility::Utility( Utility const& src ) { *this = src; }
+
 Utility::~Utility( void ) {}
 
-/* ---------------------------------------------- */
+Utility& Utility::operator=( Utility const& rhs ) {
+  if( this == &rhs ) {
+    return *this;
+  }
+  return *this;
+}
+
+/* IMPLEMENTATION ------------------------------- */
 
 /**
  * @brief      Close a file descriptor and set it to -1
- *
- * @param[in]  fd The file descriptor to close
  */
 
 void Utility::closeFd( int& fd ) {
@@ -41,11 +51,6 @@ void Utility::closeFd( int& fd ) {
 
 /**
  * @brief       Check if a file descriptor is valid.
- *
- * @param[in]   fd The file descriptor to check.
- * @return      Returns 1 if the file descriptor is valid, otherwise 0.
- *
- * TODO fcntl() is a forbidden function
  */
 
 bool Utility::fdIsValid( int fd ) {
@@ -54,9 +59,6 @@ bool Utility::fdIsValid( int fd ) {
 
 /**
  * @brief       Convert a string to an integer.
- *
- * @param[in]   str The string to convert.
- * @return      Returns the converted integer value.
  */
 
 int Utility::stringToInt( const std::string& str ) {
@@ -68,9 +70,6 @@ int Utility::stringToInt( const std::string& str ) {
 
 /**
  * @brief       Convert an integer to a string.
- *
- * @param[in]   number The integer to convert.
- * @return      Returns the converted string value.
  */
 
 std::string Utility::intToString( int number ) {
@@ -81,9 +80,6 @@ std::string Utility::intToString( int number ) {
 
 /**
  * @brief       Convert a network address to a string representation.
- *
- * @param[in]   socket The network address to convert.
- * @return      Returns the string representation of the network address.
  */
 
 std::string Utility::ntop( const struct sockaddr_storage& socket ) {
@@ -117,10 +113,7 @@ std::string Utility::ntop( const struct sockaddr_storage& socket ) {
 }
 
 /**
- * @brief       Get the error message for a given error code from getaddrinfo.
- *
- * @param[in]   errorCode The error code.
- * @return      Returns the error message corresponding to the error code.
+ * @brief       Error messages corresponding to getaddrinfo error code.
  */
 
 std::string Utility::gaiStrerror( int errorCode ) {

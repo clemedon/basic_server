@@ -1,21 +1,26 @@
+/* include/Utility */
+/* Created: 230725 08:27:22 by clem@spectre */
+/* Updated: 230725 08:27:22 by clem@spectre */
+/* Maintainer: Clément Vidon */
+
 #ifndef UTILITY_HPP_
 #define UTILITY_HPP_
 
 #include <iosfwd>
-#include <map>
 #include <string>
 
 /**
- * @brief       Various utility functions.
+ * @brief       Various utils.
  */
 
 class Utility {
- public:
+ private:
   Utility( void );
-  /* Utility( Utility const& src ); */
+  Utility( Utility const& src );
   virtual ~Utility( void );
-  /* Utility& operator=( Utility const& rhs ); */
+  Utility& operator=( Utility const& rhs );
 
+ public:
   static void        closeFd( int& fd );
   static bool        fdIsValid( int fd );
   static int         stringToInt( const std::string& str );

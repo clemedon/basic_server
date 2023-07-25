@@ -17,35 +17,35 @@ class Client;
  */
 
 class Server {
- public:
-  Server( void );
-  /* Server( Server const& src ); */
-  virtual ~Server( void );
-  /* Server&      operator=( Test const& rhs ); */
-  virtual void print( std::ostream& o ) const;
+  public:
+    Server( void );
+    Server( Server const& src );
+    virtual ~Server( void );
+    Server&      operator=( Server const& rhs );
+    virtual void print( std::ostream& o ) const;
 
-  void start( void );
+  private:
+    void stop( void );
 
- private:
-  void createServerSocket( void );
-  void handleNewClient( void );
-  void handleExistingClient( int clientSocket );
+    void removeDisconnectedClients( void );
+    void disconnectAllClients( void );
+    void disconnectAClient( int clientSocket );
 
-  // TODO ? remove second argument and use Server::_clientSocket
-  void parseData( const char* data, int clientSocket );
-  void broadcastMsg( std::string& msg, int clientSocket );
+    void broadcastMsg( std::string& msg, int clientSocket );
+    void parseData( const char* data, int clientSocket );
 
-  void disconnectAClient( int clientSocket );
-  void disconnectAllClients( void );
-  void removeDisconnectedClients( void );
-  void stop( void );
+    void handleExistingClient( int clientSocket );
+    void handleNewClient( void );
+    void createServerSocket( void );
 
-  int _serverSocket;
-  int _epollFd;
+  public:
+    void start( void );
 
-  std::map<int, Client> _clients;
-  /* TODO int _clientSocket; // instead of int clientSocket args !! */
-  std::vector<int> _disconnectedClients;
+  private:
+    int                   _serverSocket;
+    int                   _epollFd;
+    std::map<int, Client> _clients;
+    std::vector<int> _disconnectedClients;
 };
 
 std::ostream& operator<<( std::ostream& o, Server const& i );

@@ -1,3 +1,8 @@
+/* include/Client */
+/* Created: 230725 08:27:04 by clem@spectre */
+/* Updated: 230725 08:27:04 by clem@spectre */
+/* Maintainer: Clément Vidon */
+
 #ifndef CLIENT_HPP_
 #define CLIENT_HPP_
 
@@ -10,6 +15,7 @@
 
 class Client {
  public:
+  Client( void );
   explicit Client( std::string name );
   Client( Client const& src );
   virtual ~Client( void );
@@ -20,8 +26,6 @@ class Client {
   std::string getName( void ) const;
 
  private:
-  Client( void );
-
   std::string _name;
 };
 
