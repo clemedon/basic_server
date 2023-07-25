@@ -1,11 +1,15 @@
-#include <netdb.h>  // recv, send, sockaddr, accept, addrinfo, getaddrinfo, socket, setsockopt, bind, freeaddrinfo, listen
-#include <stdlib.h>     // exit XXX
-#include <sys/epoll.h>  // epoll stuff
-#include <unistd.h>     // close
-#include <cerrno>       // errno
-#include <cstring>      // strerror
-#include <iostream>     // cerr, cout
-#include <string>       // string
+/* src/Server */
+/* Created: 230725 06:55:47 by clem@spectre */
+/* Updated: 230725 06:56:14 by clem@spectre */
+/* Maintainer: Clément Vidon */
+
+#include <netdb.h>
+#include <sys/epoll.h>
+#include <unistd.h>
+#include <cerrno>
+#include <cstring>
+#include <iostream>
+#include <string>
 
 #include "Client.hpp"
 #include "Server.hpp"
@@ -20,13 +24,9 @@
 
 Server::Server( void ) {
   // init()?
+  // start()?
   _serverSocket = -1;
   _epollFd = -1;
-
-  /* add start() and stop() that create/delete _serverSocket and _epollfd */
-  /* stop() is called by the destructor and the exceptions ( double free safe )
-   */
-
   createServerSocket();
   return;
 }
@@ -65,8 +65,8 @@ void Server::createServerSocket( void ) {
   hints.ai_flags = AI_PASSIVE;
   status = getaddrinfo( NULL, PORT, &hints, &res );
   if( status != 0 ) {
-    std::cerr << "selectserver: " << Utility::gaiStrerror( status ) << "\n";
-    exit( 1 );
+    std::string message = "selectserver: " + Utility::gaiStrerror( status );
+    throw std::runtime_error( message );
   }
   for( p = res; p != NULL; p = p->ai_next ) {
     _serverSocket = socket( p->ai_family, p->ai_socktype, p->ai_protocol );
@@ -76,8 +76,8 @@ void Server::createServerSocket( void ) {
     if( setsockopt( _serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt,
                     sizeof( int ) )
         != 0 ) {
-      std::cerr << "setsockopt: " << strerror( errno ) << "\n";
-      exit( 1 );
+      std::string message = "setsockopt: " + std::string( strerror( errno ) );
+      throw std::runtime_error( message );
     }
     if( bind( _serverSocket, p->ai_addr, p->ai_addrlen ) != 0 ) {
       Utility::closeFd( _serverSocket );
@@ -105,22 +105,22 @@ void Server::start( void ) {
 
   _epollFd = epoll_create( 1 );
   if( _epollFd < 0 ) {
-    std::cerr << "epoll_create: " << strerror( errno ) << "\n";
-    exit( 1 );
+    std::string message = "epoll_create: " + std::string( strerror( errno ) );
+    throw std::runtime_error( message );
   }
   struct epoll_event event;
   memset( &event, 0, sizeof( event ) );
   event.events = EPOLLIN;  // TODO | EPOLLONESHOT ?
   event.data.fd = _serverSocket;
   if( epoll_ctl( _epollFd, EPOLL_CTL_ADD, event.data.fd, &event ) < 0 ) {
-    std::cerr << "epoll_ctl: " << strerror( errno ) << "\n";
-    exit( 1 );
+    std::string message = "epoll_ctl: " + std::string( strerror( errno ) );
+    throw std::runtime_error( message );
   }
   while( _serverSocket != -1 ) {
     eventsSize = epoll_wait( _epollFd, events, MAX_EVENTS, -1 );  // 3.
     if( eventsSize == -1 ) {
-      std::cerr << "epoll_wait: " << strerror( errno ) << "\n";
-      exit( 1 );
+      std::string message = "epoll_wait: " + std::string( strerror( errno ) );
+      throw std::runtime_error( message );
     }
     for( int i = 0; i < eventsSize; i++ ) {
       if( events[i].events & EPOLLIN ) {
@@ -161,8 +161,8 @@ void Server::handleNewClient( void ) {
   event.events = EPOLLIN;  // TODO EPOLLIN | EPOLLONESHOT
   event.data.fd = clientSocket;
   if( epoll_ctl( _epollFd, EPOLL_CTL_ADD, event.data.fd, &event ) < 0 ) {
-    std::cerr << "epoll_ctl: " << strerror( errno ) << "\n";
-    exit( 1 );
+    std::string message = "epoll_ctl: " + std::string( strerror( errno ) );
+    throw std::runtime_error( message );
   }
 
   _clients.insert( std::make_pair( clientSocket, Client( "Unknown" ) ) );
@@ -183,8 +183,8 @@ void Server::handleExistingClient( int clientSocket ) {
   std::memset( buffer, 0, sizeof( buffer ) );
   ssize_t bytesRead = recv( clientSocket, buffer, sizeof( buffer ), 0 );
   if( bytesRead < 0 ) {
-    std::cerr << "recv: " << strerror( errno ) << "\n";
-    exit( 1 );
+    std::string message = "recv: " + std::string( strerror( errno ) );
+    throw std::runtime_error( message );
   } else if( bytesRead == 0 ) {
     disconnectAClient( clientSocket );
     return;
@@ -231,8 +231,8 @@ void Server::broadcastMsg( std::string& msg, int clientSocket ) {
     recipient = it->first;
     if( recipient != _serverSocket && recipient != clientSocket ) {
       if( send( recipient, msg.c_str(), msg.length(), 0 ) < 0 ) {
-        std::cerr << "send: " << strerror( errno ) << "\n";
-        exit( 1 );
+        std::string message = "send: " + std::string( strerror( errno ) );
+        throw std::runtime_error( message );
       }
     }
   }

@@ -1,6 +1,5 @@
 #include <fcntl.h>  // fcntl
 #include <netdb.h>
-#include <stdlib.h>  // exit XXX
 #include <unistd.h>  // close
 #include <cerrno>
 #include <cstring>
@@ -31,8 +30,9 @@ void Utility::closeFd( int& fd ) {
     if( ::close( fd ) != -1 ) {
       fd = -1;
     } else {
-      std::cerr << "close fd" << fd << ":" << strerror( errno ) << "\n";
-      exit( 1 );
+      std::string message = "close fd" + intToString( fd ) + ":";
+      message += std::string( strerror( errno ) );
+      throw std::runtime_error( message );
     }
   } else {
     std::cout << __func__ << ": fd already close." << std::endl;
