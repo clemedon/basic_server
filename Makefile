@@ -6,7 +6,7 @@
 ############ PROJECT
 ####################
 
-NAME        := ft_irc
+NAME        := basic_server
 
 LIBS        :=
 LIBS_PATH   :=

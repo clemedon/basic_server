@@ -1,6 +1,6 @@
 /* src/Server */
 /* Created: 230725 06:55:47 by clem@spectre */
-/* Updated: 230725 06:56:14 by clem@spectre */
+/* Updated: 230727 16:53:28 by clem@spectre */
 /* Maintainer: Clément Vidon */
 
 #include <netdb.h>
@@ -249,6 +249,7 @@ void Server::createServerSocket( void ) {
     if( setsockopt( _serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt,
                     sizeof( int ) )
         != 0 ) {
+      freeaddrinfo( res );
       std::string message = "setsockopt: " + std::string( strerror( errno ) );
       throw std::runtime_error( message );
     }

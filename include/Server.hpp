@@ -29,9 +29,9 @@ class Server {
   Server&      operator=( Server const& rhs );
   virtual void print( std::ostream& o ) const;
 
- private:
   void stop( void );
 
+ private:
   void removeDisconnectedClients( void );
   void disconnectAllClients( void );
   void disconnectAClient( int clientSocket );

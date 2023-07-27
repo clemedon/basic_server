@@ -1,6 +1,6 @@
 
 
-#       FT_IRC
+#       BASIC SERVER
 
 - exit to throw + ask chatgpt if runtime_error is the most appropriate
 
