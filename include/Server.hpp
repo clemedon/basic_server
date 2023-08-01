@@ -37,7 +37,7 @@ class Server {
   void disconnectAClient( int clientSocket );
 
   void broadcastMsg( std::string& msg, int clientSocket );
-  void parseData( const char* data, int clientSocket );
+  void parseData( std::string &msg, int clientSocket );
 
   void handleExistingClient( int clientSocket );
   void handleNewClient( void );

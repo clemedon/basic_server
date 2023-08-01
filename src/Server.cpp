@@ -15,8 +15,7 @@
 #include "Server.hpp"
 #include "Utility.hpp"
 
-#define PORT            "4242"
-#define MAX_BUFFER_SIZE 1024
+#define PORT "4242"
 
 /*  CANON ------------------------------------------- */
 
@@ -153,8 +152,7 @@ void Server::broadcastMsg( std::string& msg, int clientSocket ) {
  * @brief       Parses the data received from a client.
  */
 
-void Server::parseData( const char* data, int clientSocket ) {
-  std::string msg( data );
+void Server::parseData( std::string& msg, int clientSocket ) {
   if( msg == "s" ) {
     Utility::closeFd( _serverSocket );
   } else if( msg == "q" ) {
@@ -172,23 +170,61 @@ void Server::parseData( const char* data, int clientSocket ) {
  * @brief       Handles communication with existing clients.
  */
 
+#define MAX_CONNECTIONS  100
+#define BUFFER_SIZE      20
+#define MAX_MESSAGE_SIZE 30
+#define CRLF             std::string( "\r\n" )
+
 void Server::handleExistingClient( int clientSocket ) {
-  char    buffer[MAX_BUFFER_SIZE];
-  ssize_t bytesRead;
+  char        buf[BUFFER_SIZE];
+  ssize_t     bytesRead = 0;
+  std::string message;
 
-  std::memset( buffer, 0, sizeof( buffer ) );
-  bytesRead = recv( clientSocket, buffer, sizeof( buffer ), 0 );
+  std::memset( buf, 0, BUFFER_SIZE );
 
-  if( bytesRead < 0 ) {
-    std::string message = "recv: " + std::string( strerror( errno ) );
-    throw std::runtime_error( message );
-  } else if( bytesRead == 0 ) {
-    disconnectAClient( clientSocket );
-    return;
+  while( true ) {
+    bytesRead = recv( clientSocket, buf, sizeof( buf ), 0 );
+
+    if( bytesRead < 0 ) {
+      std::string message = "recv: " + std::string( strerror( errno ) );
+      throw std::runtime_error( message );
+    } else if( bytesRead == 0 ) {
+      disconnectAClient( clientSocket );
+      return;
+    }
+
+    message += std::string( buf, static_cast<size_t>( bytesRead ) );
+    // TRY message += std::string( buf );
+    // BEFORE std::string message = std::string( buf );
+
+    /* bufs[clientSocket] += buf; */
+    /* while( bufs[clientSocket].size() >= 2 */
+    /*      && bufs[clientSocket].find( CRLF ) != std::string::npos ) { */
+    /* isClear = true; */
+    /* handleRequest( clientSocket, bufs[clientSocket].substr( */
+    /*                                0, bufs[clientSocket].find( CRLF ) ) ); */
+    /* } */
+    /* if( isClear == true ) { */
+    /* bufs[clientSocket].clear(); */
+    /* } */
+
+    if( message.size() > MAX_MESSAGE_SIZE ) {
+      std::cout << "Error: Received message is too long." << std::endl;
+      message.clear();
+      char tempBuf[BUFFER_SIZE];
+      while( recv( clientSocket, tempBuf, BUFFER_SIZE, MSG_DONTWAIT ) > 0 ) {
+      }
+      return;
+    }
+
+    size_t delimiterPos = message.find( CRLF );
+    if( delimiterPos != std::string::npos ) {
+      std::string msg = message.substr( 0, delimiterPos );
+      parseData( msg, clientSocket );
+      message.erase( 0, message.find( CRLF ) + 2 );
+      return;
+    }
   }
-
-  buffer[bytesRead - 2] = '\0';
-  parseData( buffer, clientSocket );
 }
 
 /**
