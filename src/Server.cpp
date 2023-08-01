@@ -15,7 +15,11 @@
 #include "Server.hpp"
 #include "Utility.hpp"
 
-#define PORT "4242"
+#define PORT            "6667"
+#define MAX_CONNECTIONS  100
+#define BUFFER_SIZE      20
+#define MAX_MESSAGE_SIZE 30
+#define CRLF             std::string( "\r\n" )
 
 /*  CANON ------------------------------------------- */
 
@@ -127,8 +131,6 @@ void Server::disconnectAClient( int clientSocket ) {
 
 /**
  * @brief       Broadcasts a message to all connected clients except the sender.
- *
- * TODO check epoll even broadcast
  */
 
 void Server::broadcastMsg( std::string& msg, int clientSocket ) {
@@ -157,9 +159,9 @@ void Server::parseData( std::string& msg, int clientSocket ) {
     Utility::closeFd( _serverSocket );
   } else if( msg == "q" ) {
     disconnectAClient( clientSocket );
-  } else if( msg.substr( 0, 6 ) == "n" ) {
+  } else if( msg[0] == 'n' && msg[1] == ' ' ) {
     std::cout << "<" << _clients.at( clientSocket ).getName();
-    _clients.at( clientSocket ).setName( msg.substr( 6 ) );
+    _clients.at( clientSocket ).setName( msg.substr( 2 ) );
     std::cout << " became " << _clients.at( clientSocket ).getName() << ">\n";
   } else {
     broadcastMsg( msg, clientSocket );
@@ -169,11 +171,6 @@ void Server::parseData( std::string& msg, int clientSocket ) {
 /**
  * @brief       Handles communication with existing clients.
  */
-
-#define MAX_CONNECTIONS  100
-#define BUFFER_SIZE      20
-#define MAX_MESSAGE_SIZE 30
-#define CRLF             std::string( "\r\n" )
 
 void Server::handleExistingClient( int clientSocket ) {
   char        buf[BUFFER_SIZE];
@@ -194,34 +191,20 @@ void Server::handleExistingClient( int clientSocket ) {
     }
 
     message += std::string( buf, static_cast<size_t>( bytesRead ) );
-    // TRY message += std::string( buf );
-    // BEFORE std::string message = std::string( buf );
-
-    /* bufs[clientSocket] += buf; */
-    /* while( bufs[clientSocket].size() >= 2 */
-    /*      && bufs[clientSocket].find( CRLF ) != std::string::npos ) { */
-    /* isClear = true; */
-    /* handleRequest( clientSocket, bufs[clientSocket].substr( */
-    /*                                0, bufs[clientSocket].find( CRLF ) ) ); */
-    /* } */
-    /* if( isClear == true ) { */
-    /* bufs[clientSocket].clear(); */
-    /* } */
 
     if( message.size() > MAX_MESSAGE_SIZE ) {
-      std::cout << "Error: Received message is too long." << std::endl;
+      std::cout << "Error: Received message is too long.\n";
       message.clear();
       char tempBuf[BUFFER_SIZE];
       while( recv( clientSocket, tempBuf, BUFFER_SIZE, MSG_DONTWAIT ) > 0 ) {
       }
       return;
     }
-
     size_t delimiterPos = message.find( CRLF );
     if( delimiterPos != std::string::npos ) {
-      std::string msg = message.substr( 0, delimiterPos );
-      parseData( msg, clientSocket );
-      message.erase( 0, message.find( CRLF ) + 2 );
+      message = message.substr( 0, delimiterPos );
+      parseData( message, clientSocket );
+      message.erase( 0, message.find( CRLF ) +  CRLF.size() );
       return;
     }
   }
@@ -230,7 +213,6 @@ void Server::handleExistingClient( int clientSocket ) {
 /**
  * @brief       Handles new client connections.
  */
-
 void Server::handleNewClient( void ) {
   sockaddr_storage clientAddress;
   socklen_t        clientAddressLength;
@@ -245,10 +227,10 @@ void Server::handleNewClient( void ) {
     return;
   }
   std::cout << "New connection from " << Utility::ntop( clientAddress ) << "\n";
-  /* std::cout << ":" << ntohs( clientAddress.sin_port ) << std::endl; */
+  /* std::cout << ":" << ntohs( clientAddress.sin_port ) << "\n"; */
   struct epoll_event event;
   memset( &event, 0, sizeof( event ) );
-  event.events = EPOLLIN;  // TODO EPOLLIN | EPOLLONESHOT
+  event.events = EPOLLIN;
   event.data.fd = clientSocket;
   if( epoll_ctl( _epollFd, EPOLL_CTL_ADD, event.data.fd, &event ) < 0 ) {
     std::string message = "epoll_ctl: " + std::string( strerror( errno ) );
@@ -320,7 +302,7 @@ void Server::start( void ) {
     throw std::runtime_error( message );
   }
   memset( &event, 0, sizeof( event ) );
-  event.events = EPOLLIN;  // TODO | EPOLLONESHOT ?
+  event.events = EPOLLIN;
   event.data.fd = _serverSocket;
   if( epoll_ctl( _epollFd, EPOLL_CTL_ADD, event.data.fd, &event ) < 0 ) {
     std::string message = "epoll_ctl: " + std::string( strerror( errno ) );
