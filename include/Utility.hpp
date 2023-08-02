@@ -21,8 +21,9 @@ class Utility {
   Utility& operator=( Utility const& rhs );
 
  public:
+  static bool        isSocketNonBlocking(int socket);
   static void        closeFd( int& fd );
-  static bool        fdIsValid( int fd );
+  static bool        isFdValid( int fd );
   static int         stringToInt( const std::string& str );
   static std::string intToString( int number );
   static std::string ntop( const struct sockaddr_storage& socket );

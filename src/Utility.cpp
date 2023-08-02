@@ -32,6 +32,18 @@ Utility& Utility::operator=( Utility const& rhs ) {
 /* IMPLEMENTATION ------------------------------- */
 
 /**
+ * @brief       Check if a file descriptor is valid.
+ */
+
+bool Utility::isSocketNonBlocking(int socket) {
+    int flags = fcntl(socket, F_GETFL, 0);
+    if (flags == -1) {
+        return false;
+    }
+    return (flags & O_NONBLOCK) != 0;
+}
+
+/**
  * @brief      Close a file descriptor and set it to -1
  */
 
@@ -53,7 +65,7 @@ void Utility::closeFd( int& fd ) {
  * @brief       Check if a file descriptor is valid.
  */
 
-bool Utility::fdIsValid( int fd ) {
+bool Utility::isFdValid( int fd ) {
   return fcntl( fd, F_GETFD ) != -1 || errno != EBADF;
 }
 

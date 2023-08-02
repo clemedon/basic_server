@@ -3,6 +3,12 @@
 /* Updated: 230727 16:53:28 by clem@spectre */
 /* Maintainer: Clément Vidon */
 
+// Simple server impleme0tation using epoll with blocking socket I/O.
+// TODO turn blocking into non-blocking ( createServerSocket, handleNewClient, handleExistingClient )
+// TODO when a client write some text, press C-C, another client send a msg -> blocked
+// TODO C-Z Server, client msg flood, fg Server
+// TODO C-D blocking
+
 #include <netdb.h>
 #include <sys/epoll.h>
 #include <unistd.h>
@@ -75,6 +81,7 @@ std::ostream& operator<<( std::ostream& o, Server const& i ) {
 }
 
 /* ---------------------------------------------- */
+
 
 /**
  * @brief       Stop the server.
